@@ -2138,6 +2138,7 @@ function loadState() {
   dashboardName       = (saved.dashboardName || 'Portfolio Dashboard').slice(0, 40);
   theme               = saved.theme === 'light' ? 'light' : 'dark';
   privateInfoDismissed = saved.privateInfoDismissed || false;
+  privacyMode          = saved.privacyMode || false;
   if (saved.fxRates) {
     fxRates = { ...FALLBACK_RATES, ...saved.fxRates };
     fxLastUpdated = saved.fxLastUpdated ? new Date(saved.fxLastUpdated) : null;
@@ -2180,7 +2181,7 @@ function buildStateJson() {
     privateAssets, privateCash,
     nextPrivateAssetId, nextPrivateCashId,
     airdrops, nextAirdropId,
-    activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed
+    activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode
   });
 }
 
@@ -4448,6 +4449,7 @@ function submitHistoryEntry() {
 
 function togglePrivacy() {
   privacyMode = !privacyMode;
+  saveState();
   renderAll();
 }
 
