@@ -362,9 +362,19 @@ tr:hover td { background: var(--bg3); }
   display: inline-flex; align-items: center;
   padding: 1px 5px; border-radius: 3px;
   font-family: var(--mono); font-size: 9px; font-weight: 700;
-  background: rgba(255,107,53,0.15); color: #ff6b35;
+  background: var(--greend); color: var(--green);
   margin-left: 5px; letter-spacing: 0.02em; vertical-align: middle;
 }
+.lev-badge.short { background: var(--redd); color: var(--red); }
+.dir-btn {
+  flex: 1; padding: 8px 0; border-radius: 8px; cursor: pointer;
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text3); font-family: var(--sans); font-size: 13px; font-weight: 600;
+  transition: all 0.15s;
+}
+.dir-btn.long.active  { background: var(--greend); border-color: var(--green); color: var(--green); }
+.dir-btn.short.active { background: var(--redd);  border-color: var(--red);  color: var(--red); }
+input[type="range"] { accent-color: var(--cyan); }
 .lev-sub { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 1px; }
 .price-editable {
   font-family: var(--mono);
@@ -652,6 +662,8 @@ textarea.update-text {
   padding: 28px;
   width: 520px;
   max-width: 95vw;
+  max-height: 88vh;
+  overflow-y: auto;
   transform: translateY(10px);
   transition: transform 0.2s;
 }
@@ -1145,6 +1157,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Asset
       </button>
+      <button class="add-asset-btn" onclick="showAddModal('perp')" title="Add a leveraged long or short position (futures / perp)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Add Leverage Position
+      </button>
     </div>
   </div>
   <div class="table-wrap" id="tableWrap">
@@ -1570,7 +1586,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 <div class="modal-overlay" id="addModal" onclick="if(event.target===this)hideAddModal()">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">Add Asset</div>
+      <div class="modal-title" id="addModalTitle">Add Asset</div>
       <button class="modal-close" onclick="hideAddModal()">✕</button>
     </div>
     <div class="form-row">
@@ -1603,7 +1619,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Avg Entry Price</label>
-        <input class="form-input" id="f-entry" type="number" placeholder="e.g. 45000" step="any" min="0" oninput="updateFundPreview()" />
+        <input class="form-input" id="f-entry" type="number" placeholder="e.g. 45000" step="any" min="0" oninput="updateFundPreview();recalcPerpUnits()" />
       </div>
       <div class="form-group">
         <label class="form-label">Current Price</label>
@@ -1622,7 +1638,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Price Currency</label>
-        <select class="form-input" id="f-currency" onchange="updateFundPreview()">
+        <select class="form-input" id="f-currency" onchange="updateFundPreview();recalcPerpUnits()">
           <option value="USD">USD — US Dollar ($)</option>
           <option value="DKK">DKK (kr)</option>
           <option value="NOK">NOK — Norwegian Krone (kr)</option>
@@ -1656,22 +1672,31 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     </div>
     <div class="form-group" style="margin-bottom:8px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
-        <input type="checkbox" id="f-leveraged" onchange="toggleLeverageFields()" style="accent-color:var(--cyan);width:14px;height:14px;cursor:pointer" />
-        <span style="font-size:12px;font-weight:500;color:var(--text2)">Leveraged position (futures / perp)</span>
-      </label>
-    </div>
-    <div class="form-group" style="margin-bottom:8px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
         <input type="checkbox" id="f-show-thesis" checked style="accent-color:var(--cyan);width:14px;height:14px;cursor:pointer" />
         <span style="font-size:12px;font-weight:500;color:var(--text2)">Include in thesis board</span>
       </label>
     </div>
     <div id="leverage-fields" style="display:none;margin-bottom:16px">
-      <div class="form-group" style="margin-bottom:4px">
-        <label class="form-label">Margin / Collateral (USD)</label>
-        <input class="form-input" id="f-margin" type="number" placeholder="e.g. 820" step="any" min="0" />
+      <div class="form-group">
+        <label class="form-label">Direction</label>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="dir-btn long active" id="dir-long" onclick="setAddDirection('long')">▲ Long</button>
+          <button type="button" class="dir-btn short" id="dir-short" onclick="setAddDirection('short')">▼ Short</button>
+        </div>
       </div>
-      <div style="font-size:11px;color:var(--text3);line-height:1.5">Actual cash at risk. Notional exposure = units × entry price.</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label">Margin / Collateral (USD)</label>
+        <input class="form-input" id="f-margin" type="number" placeholder="e.g. 820" step="any" min="0" oninput="recalcPerpUnits()" />
+        <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:4px">Actual cash at risk. Position size = margin × leverage.</div>
+      </div>
+      <div class="form-group" style="margin-bottom:4px">
+        <label class="form-label">Leverage</label>
+        <div style="display:flex;gap:12px;align-items:center">
+          <input type="range" id="f-leverage" min="1" max="25" step="0.5" value="5" oninput="onLeverageInput(this.value)" style="flex:1" />
+          <input class="form-input" id="f-leverage-num" type="number" min="1" step="any" value="5" style="width:80px;text-align:right" oninput="onLeverageInput(this.value)" />
+        </div>
+        <div id="lev-preview" style="font-size:11px;color:var(--text3);margin-top:6px;min-height:16px"></div>
+      </div>
     </div>
     <div id="fund-from-cash-row" class="form-group" style="margin-bottom:12px">
       <label class="form-label">Fund from cash <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional — auto-subtracts cost</span></label>
@@ -1683,7 +1708,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="form-error" id="f-error"></div>
     <div class="form-actions">
       <button class="btn-secondary" onclick="hideAddModal()">Cancel</button>
-      <button class="btn-primary" onclick="submitAddAsset()">Add Asset</button>
+      <button class="btn-primary" id="addModalSubmitBtn" onclick="submitAddAsset()">Add Asset</button>
     </div>
   </div>
 </div>
@@ -2173,6 +2198,7 @@ function buildStateJson() {
       realizedPnl: p.realizedPnl || 0,
       targetPrice: p.targetPrice || null,
       openedDate: p.openedDate || null,
+      direction: p.direction || null,
     })),
     cashPositions,
     closedTrades,
@@ -2656,7 +2682,7 @@ function compute(p) {
   const rate          = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
   const entryNotional = p.units * p.entryPrice * rate;
   const currentValue  = p.units * p.currentPrice * rate;
-  const pnlUsd        = currentValue - entryNotional;
+  const pnlUsd        = dirSign(p) * (currentValue - entryNotional);
   const realizedPnl   = p.realizedPnl || 0;
   const totalPnlUsd   = pnlUsd + realizedPnl;
 
@@ -2677,6 +2703,11 @@ function compute(p) {
 
 function computeAll() {
   return portfolio.map(compute);
+}
+
+// Shorts profit when price falls; only leveraged positions can be short
+function dirSign(p) {
+  return (p.leveraged && p.direction === 'short') ? -1 : 1;
 }
 
 // ── FORMAT ──────────────────────────────────────────────────────────────────
@@ -2822,7 +2853,7 @@ function renderTable(data) {
           <div class="asset-dot" style="background:${p.bg};color:${p.color};${editMode ? 'cursor:pointer;outline:2px solid rgba(255,255,255,0.15);outline-offset:1px' : ''}"
             ${editMode ? `onclick="cycleColor(${p.posId})" title="Click to change color"` : ''}>${p.ticker.slice(0,4)}</div>
           <div>
-            <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge">${p.leverage.toFixed(1)}x</span>` : ''}</div>
+            <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}">${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}</span>` : ''}</div>
             <div class="asset-ticker">${escHtml(p.ticker)}</div>
           </div>
         </div>
@@ -2944,7 +2975,7 @@ function showCloseModal(posId) {
 function updateClosePnlPreview(p) {
   const rate     = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
   const closeVal = parseFloat(document.getElementById('closePrice').value) || p.currentPrice;
-  const pnlOnRemaining = p.units * (closeVal - p.entryPrice) * rate;
+  const pnlOnRemaining = dirSign(p) * p.units * (closeVal - p.entryPrice) * rate;
   const total    = pnlOnRemaining + (p.realizedPnl || 0);
   const el       = document.getElementById('closePnlPreview');
   el.textContent = (total >= 0 ? '+' : '') + (privacyMode ? '$•••••' : fmtUsd(total));
@@ -2966,7 +2997,7 @@ function submitClosePosition() {
   }
   pushUndo(`close ${p.ticker}`);
   const rate           = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
-  const pnlOnRemaining = p.units * (closePriceVal - p.entryPrice) * rate;
+  const pnlOnRemaining = dirSign(p) * p.units * (closePriceVal - p.entryPrice) * rate;
   const totalPnl       = pnlOnRemaining + (p.realizedPnl || 0);
   const entryNotional  = p.units * p.entryPrice * rate;
   const pnlPct         = entryNotional > 0 ? (totalPnl / entryNotional * 100) : 0;
@@ -2982,6 +3013,7 @@ function submitClosePosition() {
     entryPrice: p.entryPrice,
     closePrice: closePriceVal,
     currency:   p.currency || 'USD',
+    direction:  p.leveraged ? (p.direction || 'long') : null,
     totalPnlUsd: totalPnl,
     pnlPct,
     openedDate: p.openedDate || null,
@@ -3004,9 +3036,9 @@ function holdDays(t) {
 
 function buildClosedTradesCsv() {
   const cell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const header = ['Ticker','Name','Sector','Units','Entry Price','Close Price','Currency','P&L USD','P&L %','Opened','Closed','Held Days','Outcome','Thesis'];
+  const header = ['Ticker','Name','Sector','Direction','Units','Entry Price','Close Price','Currency','P&L USD','P&L %','Opened','Closed','Held Days','Outcome','Thesis'];
   const rows = closedTrades.map(t => [
-    t.ticker, t.name, t.sector, t.units, t.entryPrice, t.closePrice, t.currency || 'USD',
+    t.ticker, t.name, t.sector, t.direction || 'spot', t.units, t.entryPrice, t.closePrice, t.currency || 'USD',
     t.totalPnlUsd.toFixed(2), t.pnlPct.toFixed(2),
     t.openedDate || '', t.closedDate, holdDays(t) ?? '',
     t.outcome || '', t.thesis || ''
@@ -3101,7 +3133,7 @@ function renderClosedTrades() {
             <div style="display:flex;align-items:center;gap:8px">
               <div style="width:26px;height:26px;border-radius:6px;background:${t.bg};color:${t.color};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">${t.ticker.slice(0,4)}</div>
               <div>
-                <div style="font-weight:600;font-size:12px;color:var(--text)">${escHtml(t.name)}</div>
+                <div style="font-weight:600;font-size:12px;color:var(--text)">${escHtml(t.name)}${t.direction ? `<span class="lev-badge${t.direction === 'short' ? ' short' : ''}" style="font-size:8px">${t.direction.toUpperCase()}</span>` : ''}</div>
                 <div style="font-size:10px;color:var(--text3)">${escHtml(t.ticker)}</div>
               </div>
             </div>
@@ -3163,7 +3195,7 @@ function updateUnits(posId, rawVal) {
   if (val < p.units) {
     const soldQty = p.units - val;
     const rate    = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
-    const gain    = soldQty * (p.currentPrice - p.entryPrice) * rate;
+    const gain    = dirSign(p) * soldQty * (p.currentPrice - p.entryPrice) * rate;
     _pendingUnits = { posId, newUnits: val, oldUnits: p.units, mode: 'reduce' };
     document.getElementById('realizedModalTitle').textContent = 'Lock in Realized P&L';
     document.getElementById('realizedModalDesc').innerHTML =
@@ -3362,13 +3394,63 @@ function updateFundPreview() {
   }
 }
 
-function toggleLeverageFields() {
-  const lev = document.getElementById('f-leveraged').checked;
-  document.getElementById('leverage-fields').style.display = lev ? 'block' : 'none';
-  document.getElementById('fund-from-cash-row').style.display = lev ? 'none' : 'block';
+let _addMode = 'spot';
+let _addDirection = 'long';
+
+function setAddDirection(dir) {
+  _addDirection = dir === 'short' ? 'short' : 'long';
+  const l = document.getElementById('dir-long');
+  const s = document.getElementById('dir-short');
+  if (l) l.classList.toggle('active', _addDirection === 'long');
+  if (s) s.classList.toggle('active', _addDirection === 'short');
+  recalcPerpUnits();
 }
 
-function showAddModal() {
+function onLeverageInput(val) {
+  let lev = parseFloat(val);
+  if (isNaN(lev) || lev < 1) lev = 1;
+  const slider = document.getElementById('f-leverage');
+  const num    = document.getElementById('f-leverage-num');
+  if (slider) slider.value = Math.min(lev, 25);
+  if (num && document.activeElement !== num) num.value = lev;
+  recalcPerpUnits();
+}
+
+function currentLeverageInput() {
+  const num = parseFloat(document.getElementById('f-leverage-num').value);
+  if (!isNaN(num) && num >= 1) return num;
+  const slider = parseFloat(document.getElementById('f-leverage').value);
+  return (!isNaN(slider) && slider >= 1) ? slider : 1;
+}
+
+// Derive position size from margin × leverage — units stays editable for fine-tuning
+function recalcPerpUnits() {
+  if (_addMode !== 'perp') return;
+  const preview = document.getElementById('lev-preview');
+  const margin  = parseFloat(document.getElementById('f-margin').value);
+  const entry   = parseFloat(document.getElementById('f-entry').value);
+  const cur     = (document.getElementById('f-currency').value || 'USD').toUpperCase();
+  const lev     = currentLeverageInput();
+  if (isNaN(margin) || margin <= 0 || isNaN(entry) || entry <= 0) {
+    if (preview) preview.textContent = 'Enter margin and entry price to size the position.';
+    return;
+  }
+  const rate  = fxRates[cur] ?? 1;
+  const units = (margin * lev) / (entry * rate);
+  document.getElementById('f-units').value = units;
+  if (preview) preview.innerHTML =
+    `≈ <b style="color:var(--text)">${fmtUnits(units)}</b> units · ${fmtUsd(margin * lev)} notional at <b style="color:var(--text)">${lev}x</b> ` +
+    (_addDirection === 'short' ? '<b style="color:var(--red)">short</b>' : '<b style="color:var(--green)">long</b>');
+}
+
+function showAddModal(mode) {
+  _addMode = mode === 'perp' ? 'perp' : 'spot';
+  const perp = _addMode === 'perp';
+  document.getElementById('addModalTitle').textContent   = perp ? 'Add Leverage Position' : 'Add Asset';
+  document.getElementById('addModalSubmitBtn').textContent = perp ? 'Add Position' : 'Add Asset';
+  document.getElementById('leverage-fields').style.display  = perp ? 'block' : 'none';
+  document.getElementById('fund-from-cash-row').style.display = perp ? 'none' : 'block';
+  setAddDirection('long');
   document.getElementById('addModal').classList.add('open');
   // populate cash funding dropdown with current balances
   const sel = document.getElementById('f-fund-cash');
@@ -3391,12 +3473,16 @@ function hideAddModal() {
   });
   document.getElementById('f-currency').value = 'USD';
   document.getElementById('f-error').textContent = '';
-  document.getElementById('f-leveraged').checked = false;
   document.getElementById('f-show-thesis').checked = true;
   document.getElementById('leverage-fields').style.display = 'none';
   document.getElementById('fund-from-cash-row').style.display = 'block';
   document.getElementById('f-fund-cash').value = '';
   document.getElementById('f-fund-preview').textContent = '';
+  document.getElementById('f-leverage').value = 5;
+  document.getElementById('f-leverage-num').value = 5;
+  document.getElementById('lev-preview').textContent = '';
+  _addMode = 'spot';
+  _addDirection = 'long';
 }
 
 function submitAddAsset() {
@@ -3408,7 +3494,7 @@ function submitAddAsset() {
   const current  = parseFloat(document.getElementById('f-current').value);
   const currency = document.getElementById('f-currency').value || 'USD';
   const thesis    = document.getElementById('f-thesis').value.trim();
-  const leveraged   = document.getElementById('f-leveraged').checked;
+  const leveraged   = _addMode === 'perp';
   const showThesis  = document.getElementById('f-show-thesis').checked;
   const marginRaw   = document.getElementById('f-margin').value;
   const coingeckoId = document.getElementById('f-coingecko').value.trim().toLowerCase() || (KNOWN_PRICE_SOURCES[ticker]?.coingeckoId) || null;
@@ -3430,7 +3516,7 @@ function submitAddAsset() {
   const targetRaw = parseFloat(document.getElementById('f-target').value);
   const targetPrice = (!isNaN(targetRaw) && targetRaw > 0) ? targetRaw : null;
   pushUndo(`add ${ticker}`);
-  portfolio.push({ name, ticker, sector, units, entryPrice: entry, currentPrice: current, targetPrice, currency, color, bg, thesis: thesis || '', leveraged, marginUSD, showThesis, coingeckoId, yahooTicker, openedDate: today(), posId: nextPosId++ });
+  portfolio.push({ name, ticker, sector, units, entryPrice: entry, currentPrice: current, targetPrice, currency, color, bg, thesis: thesis || '', leveraged, marginUSD, showThesis, coingeckoId, yahooTicker, direction: leveraged ? _addDirection : null, openedDate: today(), posId: nextPosId++ });
 
   // subtract position cost from selected cash holding
   if (!leveraged) {
@@ -3629,27 +3715,26 @@ function renderCharts(data) {
   });
 
   // Bar
-  // Merge same-ticker positions into one blended bar
-  const barGroups = {};
-  data.forEach(p => {
-    if (!barGroups[p.ticker]) barGroups[p.ticker] = { ticker: p.ticker, color: p.color, pnlUsd: 0, deployed: 0 };
-    barGroups[p.ticker].pnlUsd    += p.pnlUsd;
-    barGroups[p.ticker].deployed  += p.leveraged ? (p.marginUSD || 0) : p.invested;
-  });
-  const barData = Object.values(barGroups).map(g => ({
-    ...g,
-    blendedPct: g.deployed > 0 ? (g.pnlUsd / g.deployed) * 100 : 0,
-  })).sort((a, b) => b.blendedPct - a.blendedPct);
+  // One bar per position: spot measured on cost basis, perps on margin.
+  // Same-ticker spot + perp stay separate so a hedge shows both legs.
+  const barData = data.map(p => {
+    const deployed = p.leveraged ? (p.marginUSD || 0) : p.invested;
+    const label = p.leveraged && p.leverage
+      ? `${p.ticker} ${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}`
+      : p.ticker;
+    return { label, ticker: p.ticker, pnlUsd: p.pnlUsd, deployed,
+             pct: deployed > 0 ? (p.pnlUsd / deployed) * 100 : 0 };
+  }).sort((a, b) => b.pct - a.pct);
 
   if (barChart) barChart.destroy();
   barChart = new Chart(document.getElementById('barChart'), {
     type: 'bar',
     data: {
-      labels: barData.map(g => g.ticker),
+      labels: barData.map(g => g.label),
       datasets: [{
-        data: barData.map(g => g.blendedPct),
-        backgroundColor: barData.map(g => g.blendedPct >= 0 ? 'rgba(0,230,118,0.7)' : 'rgba(255,71,87,0.7)'),
-        borderColor: barData.map(g => g.blendedPct >= 0 ? '#00e676' : '#ff4757'),
+        data: barData.map(g => g.pct),
+        backgroundColor: barData.map(g => g.pct >= 0 ? 'rgba(0,230,118,0.7)' : 'rgba(255,71,87,0.7)'),
+        borderColor: barData.map(g => g.pct >= 0 ? '#00e676' : '#ff4757'),
         borderWidth: 1,
         borderRadius: 4,
       }]
@@ -3670,7 +3755,7 @@ function renderCharts(data) {
           callbacks: {
             label: ctx => {
               const g = barData[ctx.dataIndex];
-              return `  ${fmtPct(g.blendedPct)}  (${fmtUsd(g.pnlUsd)})`;
+              return `  ${fmtPct(g.pct)}  (${fmtUsd(g.pnlUsd)})`;
             }
           }
         }
@@ -3708,7 +3793,7 @@ function renderThesisCard(p, totalValue) {
       <div class="thesis-asset">
         <div class="thesis-dot" style="background:${p.bg};color:${p.color}">${p.ticker.slice(0,4)}</div>
         <div>
-          <div class="thesis-name">${escHtml(p.name)}${p.leveraged ? '<span class="lev-badge" style="font-size:8px;margin-left:5px">lev</span>' : ''}</div>
+          <div class="thesis-name">${escHtml(p.name)}${p.leveraged ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}" style="font-size:8px;margin-left:5px">${p.direction === 'short' ? 'short' : 'long'}</span>` : ''}</div>
           <div class="thesis-ticker">${p.ticker} · ${allocPct}% of portfolio · <span onclick="promptTarget(${p.posId})" style="cursor:pointer;border-bottom:1px dashed currentColor" title="Click to edit target">${p.targetPrice ? `target ${fmtNative(p.targetPrice, p.currency)} <span style="color:${p.targetPrice >= p.currentPrice ? 'var(--cyan)' : 'var(--red)'};">(${((p.targetPrice - p.currentPrice)/p.currentPrice*100) >= 0 ? '+' : ''}${((p.targetPrice - p.currentPrice)/p.currentPrice*100).toFixed(1)}%)</span>` : `<span style="color:var(--text3)">+ set target</span>`}</span></div>
         </div>
       </div>
