@@ -509,6 +509,11 @@ input[type="range"] { accent-color: var(--cyan); }
   transition: border-color 0.2s;
 }
 .thesis-card:hover { border-color: var(--border2); }
+.inv-alert {
+  background: var(--redd); border: 1px solid var(--red); border-radius: 8px;
+  padding: 10px 14px; font-size: 12px; color: var(--red);
+  margin-bottom: 12px; line-height: 1.5;
+}
 .thesis-header {
   display: flex;
   align-items: center;
@@ -1361,9 +1366,11 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 
 </main>
 
-<footer class="app-footer">
+<footer class="app-footer" id="appFooter">
   🔒 Your data never leaves your browser &nbsp;·&nbsp;
   <button class="about-link" onclick="showAboutModal()">About</button>
+  &nbsp;·&nbsp; © 2026 xbtgodXD ·
+  <a class="about-link" href="https://github.com/xbtgodXD/portfolio-dashboard/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
 </footer>
 
 <!-- ABOUT MODAL -->
@@ -1631,10 +1638,12 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <label class="form-label">Target Price <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
         <input class="form-input" id="f-target" type="number" placeholder="e.g. 150000" step="any" min="0" />
       </div>
-      <div class="form-group" style="justify-content:flex-end;padding-top:4px">
-        <div style="font-size:11px;color:var(--text3);line-height:1.5">Your exit target. Shows % remaining<br>and progress bar in the table.</div>
+      <div class="form-group">
+        <label class="form-label">Invalidation Price <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+        <input class="form-input" id="f-invalidation" type="number" placeholder="e.g. 32000" step="any" min="0" />
       </div>
     </div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:-8px;margin-bottom:16px">Target = where you'd take profit. Invalidation = the price that kills your thesis — the dashboard warns you when it's crossed (below it for longs, above it for shorts).</div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Price Currency</label>
@@ -2022,6 +2031,8 @@ function switchTab(name) {
   if (name === 'portfolio') setTimeout(() => { const d = computeAll(); renderCharts(d); renderHistorySection(); }, 0);
   if (name === 'private')   setTimeout(() => renderPrivateSplitChart(), 0);
   activeTab = name;
+  const footer = document.getElementById('appFooter');
+  if (footer) footer.style.display = name === 'portfolio' ? '' : 'none';
   saveState();
 }
 
@@ -2197,6 +2208,7 @@ function buildStateJson() {
       posId: p.posId,
       realizedPnl: p.realizedPnl || 0,
       targetPrice: p.targetPrice || null,
+      invalidationPrice: p.invalidationPrice || null,
       openedDate: p.openedDate || null,
       direction: p.direction || null,
     })),
@@ -2853,7 +2865,7 @@ function renderTable(data) {
           <div class="asset-dot" style="background:${p.bg};color:${p.color};${editMode ? 'cursor:pointer;outline:2px solid rgba(255,255,255,0.15);outline-offset:1px' : ''}"
             ${editMode ? `onclick="cycleColor(${p.posId})" title="Click to change color"` : ''}>${p.ticker.slice(0,4)}</div>
           <div>
-            <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}">${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}</span>` : ''}</div>
+            <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}">${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}</span>` : ''}${invalidationBreached(p) ? `<span style="color:var(--red);margin-left:5px;cursor:help" title="Invalidation level crossed (${fmtNative(p.invalidationPrice, p.currency)}) — check your thesis">⚠</span>` : ''}</div>
             <div class="asset-ticker">${escHtml(p.ticker)}</div>
           </div>
         </div>
@@ -3154,6 +3166,29 @@ function deleteClosedTrade(index) {
   const t = closedTrades[index];
   pushUndo(`delete closed trade ${t ? t.ticker : ''}`);
   closedTrades.splice(index, 1);
+  saveState();
+  renderAll();
+}
+
+// A long thesis dies below its invalidation price; a short thesis dies above it
+function invalidationBreached(p) {
+  if (!p.invalidationPrice) return false;
+  return (p.leveraged && p.direction === 'short')
+    ? p.currentPrice >= p.invalidationPrice
+    : p.currentPrice <= p.invalidationPrice;
+}
+
+function promptInvalidation(posId) {
+  const p = portfolio.find(p => p.posId === posId);
+  if (!p) return;
+  const dirWord = (p.leveraged && p.direction === 'short') ? 'above' : 'below';
+  const current = p.invalidationPrice ? String(p.invalidationPrice) : '';
+  const raw = window.prompt(`Invalidation price for ${p.ticker} — the thesis is dead ${dirWord} this price (leave blank to clear):`, current);
+  if (raw === null) return; // cancelled
+  const val = parseFloat(raw);
+  const newInv = (!isNaN(val) && val > 0) ? val : null;
+  pushUndo(`invalidation ${p.ticker} → ${newInv ? fmtPrice(newInv) : 'cleared'}`);
+  p.invalidationPrice = newInv;
   saveState();
   renderAll();
 }
@@ -3468,7 +3503,7 @@ function showAddModal(mode) {
 
 function hideAddModal() {
   document.getElementById('addModal').classList.remove('open');
-  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-thesis','f-margin','f-coingecko','f-yahoo'].forEach(id => {
+  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-invalidation','f-thesis','f-margin','f-coingecko','f-yahoo'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-currency').value = 'USD';
@@ -3515,8 +3550,10 @@ function submitAddAsset() {
     : (COLOR_PALETTE.find(c => !usedColors.has(c.color)) || COLOR_PALETTE[portfolio.length % COLOR_PALETTE.length]);
   const targetRaw = parseFloat(document.getElementById('f-target').value);
   const targetPrice = (!isNaN(targetRaw) && targetRaw > 0) ? targetRaw : null;
+  const invRaw = parseFloat(document.getElementById('f-invalidation').value);
+  const invalidationPrice = (!isNaN(invRaw) && invRaw > 0) ? invRaw : null;
   pushUndo(`add ${ticker}`);
-  portfolio.push({ name, ticker, sector, units, entryPrice: entry, currentPrice: current, targetPrice, currency, color, bg, thesis: thesis || '', leveraged, marginUSD, showThesis, coingeckoId, yahooTicker, direction: leveraged ? _addDirection : null, openedDate: today(), posId: nextPosId++ });
+  portfolio.push({ name, ticker, sector, units, entryPrice: entry, currentPrice: current, targetPrice, invalidationPrice, currency, color, bg, thesis: thesis || '', leveraged, marginUSD, showThesis, coingeckoId, yahooTicker, direction: leveraged ? _addDirection : null, openedDate: today(), posId: nextPosId++ });
 
   // subtract position cost from selected cash holding
   if (!leveraged) {
@@ -3787,6 +3824,13 @@ function renderThesisCard(p, totalValue) {
   const trueEq   = p.leveraged ? (p.marginUSD || 0) + p.pnlUsd : p.equityValue;
   const allocPct = totalValue > 0 ? (trueEq / totalValue * 100).toFixed(1) : '0.0';
   const thesis   = p.thesis || '';
+  const breached = invalidationBreached(p);
+  const invSpan  = (() => {
+    if (!p.invalidationPrice) return `<span style="color:var(--text3)">+ set invalidation</span>`;
+    const pct = ((p.invalidationPrice - p.currentPrice) / p.currentPrice) * 100;
+    const col = breached ? 'var(--red)' : Math.abs(pct) <= 10 ? 'var(--amber)' : 'var(--text3)';
+    return `inv ${fmtNative(p.invalidationPrice, p.currency)} <span style="color:${col}">(${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)</span>`;
+  })();
   return `
   <div class="thesis-card" data-ticker="${p.ticker}">
     <div class="thesis-header">
@@ -3794,7 +3838,7 @@ function renderThesisCard(p, totalValue) {
         <div class="thesis-dot" style="background:${p.bg};color:${p.color}">${p.ticker.slice(0,4)}</div>
         <div>
           <div class="thesis-name">${escHtml(p.name)}${p.leveraged ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}" style="font-size:8px;margin-left:5px">${p.direction === 'short' ? 'short' : 'long'}</span>` : ''}</div>
-          <div class="thesis-ticker">${p.ticker} · ${allocPct}% of portfolio · <span onclick="promptTarget(${p.posId})" style="cursor:pointer;border-bottom:1px dashed currentColor" title="Click to edit target">${p.targetPrice ? `target ${fmtNative(p.targetPrice, p.currency)} <span style="color:${p.targetPrice >= p.currentPrice ? 'var(--cyan)' : 'var(--red)'};">(${((p.targetPrice - p.currentPrice)/p.currentPrice*100) >= 0 ? '+' : ''}${((p.targetPrice - p.currentPrice)/p.currentPrice*100).toFixed(1)}%)</span>` : `<span style="color:var(--text3)">+ set target</span>`}</span></div>
+          <div class="thesis-ticker">${p.ticker} · ${allocPct}% of portfolio · <span onclick="promptTarget(${p.posId})" style="cursor:pointer;border-bottom:1px dashed currentColor" title="Click to edit target">${p.targetPrice ? `target ${fmtNative(p.targetPrice, p.currency)} <span style="color:${p.targetPrice >= p.currentPrice ? 'var(--cyan)' : 'var(--red)'};">(${((p.targetPrice - p.currentPrice)/p.currentPrice*100) >= 0 ? '+' : ''}${((p.targetPrice - p.currentPrice)/p.currentPrice*100).toFixed(1)}%)</span>` : `<span style="color:var(--text3)">+ set target</span>`}</span> · <span onclick="promptInvalidation(${p.posId})" style="cursor:pointer;border-bottom:1px dashed currentColor" title="Click to edit invalidation — the price that kills this thesis">${invSpan}</span></div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -3802,6 +3846,7 @@ function renderThesisCard(p, totalValue) {
         <button onclick="hideThesisCard(${p.posId})" title="Remove from thesis board" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:2px 4px;line-height:1;border-radius:4px;transition:color 0.15s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">×</button>
       </div>
     </div>
+    ${breached ? `<div class="inv-alert">⚠ <b>Invalidation hit.</b> ${p.ticker} is ${p.leveraged && p.direction === 'short' ? 'above' : 'below'} your ${fmtNative(p.invalidationPrice, p.currency)} line. Re-read the thesis below — is it still alive, or is it time to act?</div>` : ''}
     <textarea class="thesis-text"
       id="thesis-${p.posId}"
       oninput="onThesisInput(${p.posId}, this)"
@@ -3948,7 +3993,7 @@ function showThesisCard(posId) {
 }
 
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 let thesisSlideIndex = 0;
@@ -4314,7 +4359,7 @@ function renderHistorySection() {
       ...(hasWithdrawals ? [{ label: 'Withdrawal-adjusted', data: adjustedData, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: sorted.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3, yAxisID: 'y' }] : []),
       { label: 'BTC', data: btcData, fill: false, borderColor: '#f7931a', borderWidth: 2, pointRadius: sorted.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: '#f7931a', tension: 0.3, yAxisID: 'y2' }
     ];
-    yTickCb = v => Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v;
+    yTickCb = v => privacyMode ? '•••' : (Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v);
     tooltipLabelCb = ctx => {
       const v = ctx.raw;
       if (v === null) return `  ${ctx.dataset.label}: —`;
@@ -4325,7 +4370,7 @@ function renderHistorySection() {
       { label: 'Net Worth', data: sorted.map(d => d.value), fill: true, backgroundColor: gradient, borderColor: th.accent, borderWidth: 2, pointRadius: sorted.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent, tension: 0.3 },
       ...(hasWithdrawals ? [{ label: 'Withdrawal-adjusted', data: adjustedData, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: sorted.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3 }] : [])
     ];
-    yTickCb = v => Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v;
+    yTickCb = v => privacyMode ? '•••' : (Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v);
     tooltipLabelCb = ctx => `  ${ctx.dataset.label}: ${fmtUsd(ctx.raw)}`;
   }
 
