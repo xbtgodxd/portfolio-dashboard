@@ -1157,7 +1157,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
   <div class="section-header">
     <div class="section-title">Holdings</div>
     <div style="display:flex;align-items:center;gap:12px">
-      <div style="font-size:11px;color:var(--text3)">Sort by column · <b style="color:var(--amber)">Edit</b> to change prices, units &amp; cash · hover row to remove</div>
+      <div style="font-size:11px;color:var(--text3)">Sort by column · <b style="color:var(--text2)">Edit</b> to change prices, units &amp; cash</div>
       <button class="add-asset-btn" onclick="showAddModal()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Asset
@@ -2936,10 +2936,12 @@ function renderTable(data) {
         </div>
       </td>
       <td style="text-align:right;width:100px;white-space:nowrap">
-        <button class="close-btn" onclick="showCloseModal(${p.posId})">✓ Close</button>
-        ${editMode ? `<button class="trash-btn" style="margin-left:4px" onclick="removeAsset(${p.posId})" title="Remove ${p.ticker}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        </button>` : ''}
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+          <button class="close-btn" onclick="showCloseModal(${p.posId})">✓ Close</button>
+          <button class="trash-btn" onclick="removeAsset(${p.posId})" title="Remove ${p.ticker} from the portfolio">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
+        </div>
       </td>
     </tr>`;
   }).join('');
