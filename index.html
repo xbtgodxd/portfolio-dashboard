@@ -1414,8 +1414,8 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <option value="Other">Other</option>
       </select>
     </div>
-    <!-- CRYPTO FIELDS -->
-    <div id="pa-crypto-fields" style="display:none">
+    <!-- TRACKED INVESTMENT FIELDS (Crypto & Stocks / Shares) -->
+    <div id="pa-tracked-fields" style="display:none">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
           <label class="form-label">Ticker</label>
@@ -1426,9 +1426,31 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
           <input class="form-input" id="pa-units" type="number" placeholder="e.g. 0.5" step="any" min="0" />
         </div>
       </div>
-      <div class="form-group">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Avg Buy Price <span style="color:var(--text3);font-weight:400;text-transform:none">optional — for gain/loss</span></label>
+          <input class="form-input" id="pa-entry" type="number" placeholder="e.g. 720" step="any" min="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Current Price <span style="color:var(--text3);font-weight:400;text-transform:none">optional — auto-fetched</span></label>
+          <input class="form-input" id="pa-current" type="number" placeholder="auto" step="any" min="0" />
+        </div>
+      </div>
+      <div class="form-group" id="pa-tcurrency-group">
+        <label class="form-label">Price Currency</label>
+        <select class="form-input" id="pa-tcurrency">
+          <option value="USD">USD</option><option value="DKK">DKK</option><option value="EUR">EUR</option>
+          <option value="GBP">GBP</option><option value="NOK">NOK</option><option value="SEK">SEK</option>
+          <option value="CHF">CHF</option><option value="JPY">JPY</option><option value="AUD">AUD</option><option value="CAD">CAD</option>
+        </select>
+      </div>
+      <div class="form-group" id="pa-coingecko-group">
         <label class="form-label">CoinGecko ID <span style="color:var(--text3);font-weight:400;text-transform:none">auto-filled for known tickers</span></label>
         <input class="form-input" id="pa-coingecko" placeholder="e.g. bitcoin" />
+      </div>
+      <div class="form-group" id="pa-yahoo-group" style="display:none">
+        <label class="form-label">Yahoo Ticker <span style="color:var(--text3);font-weight:400;text-transform:none">for stocks — find it on finance.yahoo.com</span></label>
+        <input class="form-input" id="pa-yahoo" placeholder="e.g. NOVO-B.CO, NVDA" style="text-transform:uppercase" />
       </div>
     </div>
     <!-- MANUAL VALUE FIELDS -->
@@ -4702,8 +4724,17 @@ function toggleEditMode() {
 // ── PRIVATE TAB ─────────────────────────────────────────────────────────────
 
 function privateAssetValueUSD(a) {
-  if (a.category === 'Crypto') return (a.currentPrice || 0) * (a.units || 0);
+  if (isTrackedPrivate(a)) return (a.currentPrice || 0) * (a.units || 0) * (fxRates[(a.currency || 'USD').toUpperCase()] ?? 1);
   return toUSD(a.value, a.currency);
+}
+
+// Cost basis + unrealized gain/loss for a tracked private holding (null if no avg buy price recorded).
+function privateAssetPnl(a) {
+  if (!isTrackedPrivate(a) || !a.entryPrice || !a.units) return null;
+  const fx       = fxRates[(a.currency || 'USD').toUpperCase()] ?? 1;
+  const invested = a.entryPrice * a.units * fx;
+  const value    = (a.currentPrice || 0) * a.units * fx;
+  return { invested, value, pnlUSD: value - invested, pnlPct: invested > 0 ? (value - invested) / invested * 100 : 0 };
 }
 
 function privateTotalUSD() {
@@ -4774,6 +4805,12 @@ function renderPrivateSummary() {
   const { assets, cash, total } = privateTotalUSD();
   const company  = companyNetWorthUSD();
   const combined = company + total;
+  // Unrealized gain/loss across tracked private investments (crypto + stocks with a cost basis)
+  let invUSD = 0, valUSD = 0;
+  privateAssets.forEach(a => { const p = privateAssetPnl(a); if (p) { invUSD += p.invested; valUSD += p.value; } });
+  const investPnl = valUSD - invUSD;
+  const investPnlPct = invUSD > 0 ? investPnl / invUSD * 100 : 0;
+  const hasInvestPnl = invUSD > 0;
 
   document.getElementById('privateSummaryGrid').innerHTML = `
     <div class="card accent-purple">
@@ -4799,6 +4836,7 @@ function renderPrivateSummary() {
       <div class="card-label">Private Assets</div>
       <div class="card-value" style="font-size:20px">${fmtUsd(assets)}</div>
       <div class="card-sub">${privateAssets.length} holding${privateAssets.length !== 1 ? 's' : ''}</div>
+      ${hasInvestPnl ? `<div class="card-sub" style="margin-top:2px;color:${investPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${privacyMode ? '•••••' : `${investPnl >= 0 ? '+' : ''}${fmtUsd(investPnl)} (${investPnlPct >= 0 ? '+' : ''}${investPnlPct.toFixed(1)}%)`} unrealized</div>` : ''}
     </div>
     <div class="card accent-amber">
       <div class="card-label">Private Cash</div>
@@ -4816,20 +4854,32 @@ function renderPrivateAssets() {
   }
   const rows = privateAssets.map(a => {
     const usd = privateAssetValueUSD(a);
-    let valueCell;
+    const pnl = privateAssetPnl(a);
+    let valueCell, pnlCell;
     if (privacyMode) {
       valueCell = '<span style="font-family:var(--mono);color:var(--text3)">•••••</span>';
-    } else if (a.category === 'Crypto') {
-      const priceStr = a.currentPrice ? fmtUsd(a.currentPrice) : '<span style="color:var(--text3)">fetching…</span>';
+      pnlCell   = '<span style="font-family:var(--mono);color:var(--text3)">•••••</span>';
+    } else if (isTrackedPrivate(a)) {
+      const priceStr = a.currentPrice ? fmtNative(a.currentPrice, a.currency) : '<span style="color:var(--text3)">fetching…</span>';
       valueCell = `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
         <input class="price-editable" type="text"
           value="${a.units}"
           ${editMode ? '' : 'readonly tabindex="-1"'}
           onblur="updatePrivateAssetUnits(${a.id}, this.value)"
           onkeydown="if(event.key==='Enter')this.blur()"
-          style="width:100px;text-align:right"
-        /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${escHtml(a.ticker)} @ ${priceStr}</span>
-      </div>`;
+          style="width:72px;text-align:right"
+        /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${escHtml(a.ticker)} @</span>
+        <input class="price-editable" type="text"
+          value="${editMode ? (a.currentPrice ?? '') : ''}"
+          ${editMode ? `placeholder="price"` : 'readonly tabindex="-1"'}
+          onblur="updatePrivateAssetPrice(${a.id}, this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()"
+          style="width:${editMode ? '72px' : '0;display:none'};text-align:right"
+        /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${editMode ? escHtml(a.currency) : priceStr}</span>
+      </div>${a.entryPrice ? `<div style="font-size:10px;color:var(--text3);font-family:var(--mono);text-align:right;margin-top:2px">avg ${fmtNative(a.entryPrice, a.currency)}</div>` : ''}`;
+      pnlCell = pnl
+        ? `<span class="num" style="color:${pnl.pnlUSD >= 0 ? 'var(--green)' : 'var(--red)'}">${pnl.pnlPct >= 0 ? '+' : ''}${pnl.pnlPct.toFixed(1)}%</span>`
+        : '<span style="color:var(--text3)">—</span>';
     } else {
       valueCell = `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
         <input class="price-editable" type="text"
@@ -4840,19 +4890,21 @@ function renderPrivateAssets() {
           style="width:100px;text-align:right"
         /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${a.currency}</span>
       </div>`;
+      pnlCell = '<span style="color:var(--text3)">—</span>';
     }
     return `<tr>
       <td style="font-weight:600">${escHtml(a.name)}</td>
       <td><span class="private-cat-badge">${a.category}</span></td>
       <td class="right">${valueCell}</td>
       <td class="right">${fmtUsd(usd)}</td>
+      <td class="right">${pnlCell}</td>
       <td><button class="private-del-btn" onclick="removePrivateAsset(${a.id})" title="Remove">×</button></td>
     </tr>`;
   }).join('');
   el.innerHTML = `<table class="private-table">
     <thead><tr>
       <th>Name</th><th>Category</th>
-      <th class="right">Value</th><th class="right">USD</th>
+      <th class="right">Holding / Value</th><th class="right">USD</th><th class="right">P&L</th>
       <th></th>
     </tr></thead>
     <tbody>${rows}</tbody>
@@ -4902,24 +4954,39 @@ function renderPrivateCash() {
   else el.classList.remove('edit-mode');
 }
 
+// Which private categories are tracked as live positions (units + price + P&L) vs. lump-sum values.
+function isTrackedPrivate(a) {
+  return a.category === 'Crypto' || a.category === 'Stocks / Shares';
+}
 function onPrivateCategoryChange() {
-  const isCrypto = document.getElementById('pa-category').value === 'Crypto';
-  document.getElementById('pa-crypto-fields').style.display = isCrypto ? '' : 'none';
-  document.getElementById('pa-manual-fields').style.display = isCrypto ? 'none' : '';
+  const cat    = document.getElementById('pa-category').value;
+  const crypto = cat === 'Crypto';
+  const stock  = cat === 'Stocks / Shares';
+  const tracked = crypto || stock;
+  document.getElementById('pa-tracked-fields').style.display = tracked ? '' : 'none';
+  document.getElementById('pa-manual-fields').style.display  = tracked ? 'none' : '';
+  // Crypto prices come from CoinGecko in USD; stocks come from Yahoo in the exchange's native currency.
+  document.getElementById('pa-tcurrency-group').style.display = stock  ? '' : 'none';
+  document.getElementById('pa-coingecko-group').style.display = crypto ? '' : 'none';
+  document.getElementById('pa-yahoo-group').style.display     = stock  ? '' : 'none';
+  if (crypto) document.getElementById('pa-tcurrency').value = 'USD';
+  else if (stock) document.getElementById('pa-tcurrency').value = homeCurrency;
 }
 function onPrivateTickerInput() {
   const ticker = document.getElementById('pa-ticker').value.trim().toUpperCase();
   const known = KNOWN_PRICE_SOURCES[ticker];
   if (known?.coingeckoId) document.getElementById('pa-coingecko').value = known.coingeckoId;
+  if (known?.yahooTicker) document.getElementById('pa-yahoo').value     = known.yahooTicker;
 }
 
 function showAddPrivateAssetModal() {
-  ['pa-name','pa-ticker','pa-coingecko'].forEach(id => document.getElementById(id).value = '');
+  ['pa-name','pa-ticker','pa-coingecko','pa-yahoo','pa-entry','pa-current'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('pa-value').value = '';
   document.getElementById('pa-units').value = '';
   document.getElementById('pa-error').textContent = '';
   document.getElementById('pa-category').value = 'Real Estate';
   document.getElementById('pa-currency').value = homeCurrency;
+  document.getElementById('pa-tcurrency').value = 'USD';
   onPrivateCategoryChange();
   document.getElementById('privateAssetModal').classList.add('open');
   setTimeout(() => document.getElementById('pa-name').focus(), 50);
@@ -4932,13 +4999,22 @@ function submitPrivateAsset() {
   const category = document.getElementById('pa-category').value;
   if (!name) { document.getElementById('pa-error').textContent = 'Name is required.'; return; }
 
-  if (category === 'Crypto') {
+  if (category === 'Crypto' || category === 'Stocks / Shares') {
+    const crypto      = category === 'Crypto';
     const ticker      = document.getElementById('pa-ticker').value.trim().toUpperCase();
-    const coingeckoId = document.getElementById('pa-coingecko').value.trim().toLowerCase();
     const units       = parseFloat(document.getElementById('pa-units').value);
     if (!ticker)                    { document.getElementById('pa-error').textContent = 'Ticker is required.'; return; }
     if (isNaN(units) || units <= 0) { document.getElementById('pa-error').textContent = 'Enter a valid number of units.'; return; }
-    privateAssets.push({ id: nextPrivateAssetId++, name, category, ticker, coingeckoId, units, currentPrice: null, currency: 'USD' });
+    // Crypto is priced in USD (CoinGecko); stocks in the exchange's native currency (Yahoo).
+    const currency    = crypto ? 'USD' : (document.getElementById('pa-tcurrency').value || 'USD');
+    const coingeckoId = crypto ? (document.getElementById('pa-coingecko').value.trim().toLowerCase() || KNOWN_PRICE_SOURCES[ticker]?.coingeckoId || null) : null;
+    const yahooTicker = crypto ? null : (document.getElementById('pa-yahoo').value.trim().toUpperCase() || KNOWN_PRICE_SOURCES[ticker]?.yahooTicker || null);
+    const entryRaw    = parseFloat(document.getElementById('pa-entry').value);
+    const hasCostBasis = !isNaN(entryRaw) && entryRaw > 0;
+    const entryPrice  = hasCostBasis ? entryRaw : null;
+    const curRaw      = parseFloat(document.getElementById('pa-current').value);
+    const currentPrice = (!isNaN(curRaw) && curRaw > 0) ? curRaw : (entryPrice || null);
+    privateAssets.push({ id: nextPrivateAssetId++, name, category, ticker, coingeckoId, yahooTicker, units, entryPrice, currentPrice, currency, hasCostBasis });
   } else {
     const value    = parseFloat(document.getElementById('pa-value').value);
     const currency = document.getElementById('pa-currency').value;
@@ -4961,19 +5037,40 @@ function removePrivateAsset(id) {
 }
 
 async function fetchPrivateCryptoPrices() {
+  let updated = false;
+
+  // Crypto — batch via CoinGecko (USD)
   const cryptoAssets = privateAssets.filter(a => a.category === 'Crypto' && a.coingeckoId);
-  if (!cryptoAssets.length) return;
-  const ids = [...new Set(cryptoAssets.map(a => a.coingeckoId))].join(',');
-  try {
-    const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
-    const data = await res.json();
-    cryptoAssets.forEach(a => {
-      const price = data[a.coingeckoId]?.usd;
-      if (price) a.currentPrice = price;
-    });
-    saveState();
-    renderPrivateTab();
-  } catch(e) { /* silent fail — keep last known price */ }
+  if (cryptoAssets.length) {
+    const ids = [...new Set(cryptoAssets.map(a => a.coingeckoId))].join(',');
+    try {
+      const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
+      const data = await res.json();
+      cryptoAssets.forEach(a => {
+        const price = data[a.coingeckoId]?.usd;
+        if (price) { a.currentPrice = price; updated = true; }
+      });
+    } catch(e) { /* silent fail — keep last known price */ }
+  }
+
+  // Stocks / Shares — Yahoo via CORS proxy, one call per holding (native currency)
+  const stockAssets = privateAssets.filter(a => a.category === 'Stocks / Shares' && a.yahooTicker);
+  for (const a of stockAssets) {
+    try {
+      const url   = `https://query1.finance.yahoo.com/v8/finance/chart/${a.yahooTicker}?interval=1d&range=1d`;
+      const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const res   = await fetch(proxy);
+      const outer = await res.json();
+      const data  = JSON.parse(outer.contents);
+      const price = data.chart.result[0].meta.regularMarketPrice;
+      if (price && typeof price === 'number' && isFinite(price) && price > 0) {
+        const ratio = a.currentPrice > 0 ? price / a.currentPrice : 1;
+        if (ratio < 10 && ratio > 0.1) { a.currentPrice = price; updated = true; }
+      }
+    } catch(e) { /* silent fail — keep last known price */ }
+  }
+
+  if (updated) { saveState(); renderPrivateTab(); }
 }
 
 let _editingPrivateCashId = null;
@@ -5053,6 +5150,17 @@ function updatePrivateAssetUnits(id, rawVal) {
   const asset = privateAssets.find(a => a.id === id);
   if (!asset || asset.units === val) return;
   asset.units = val;
+  saveState();
+  renderPrivateTab();
+}
+function updatePrivateAssetPrice(id, rawVal) {
+  const raw = rawVal.trim();
+  if (raw === '') return; // left blank in edit mode — leave the auto-fetched price alone
+  const val = parseFloat(raw.replace(/[^0-9.-]/g, ''));
+  if (isNaN(val) || val <= 0) return;
+  const asset = privateAssets.find(a => a.id === id);
+  if (!asset || asset.currentPrice === val) return;
+  asset.currentPrice = val;
   saveState();
   renderPrivateTab();
 }
