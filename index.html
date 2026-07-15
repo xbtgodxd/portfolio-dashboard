@@ -1166,6 +1166,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         Add Leverage Position
       </button>
+      <button class="add-asset-btn" onclick="showAddModal('physical')" title="Add a physical asset — car, real estate, valuables (no ticker or live price; just what it's worth)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+        Add Physical Asset
+      </button>
     </div>
   </div>
   <div class="table-wrap" id="tableWrap">
@@ -1601,7 +1605,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <label class="form-label">Asset Name</label>
         <input class="form-input" id="f-name" placeholder="e.g. Bitcoin" />
       </div>
-      <div class="form-group">
+      <div class="form-group" id="f-ticker-group">
         <label class="form-label">Ticker</label>
         <input class="form-input" id="f-ticker" placeholder="e.g. BTC" oninput="this.value=this.value.toUpperCase()" />
       </div>
@@ -1617,23 +1621,29 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
           <option value="Consumer"><option value="Industrials"><option value="Real Estate">
           <option value="Commodities"><option value="Fixed Income">
         </datalist>
+        <datalist id="physical-sector-list">
+          <option value="Vehicle"><option value="Real Estate"><option value="Jewelry">
+          <option value="Watches"><option value="Art"><option value="Collectibles">
+          <option value="Electronics"><option value="Furniture"><option value="Boat">
+          <option value="Precious Metals"><option value="Other">
+        </datalist>
       </div>
-      <div class="form-group">
+      <div class="form-group" id="f-units-group">
         <label class="form-label">Units / Amount Held</label>
         <input class="form-input" id="f-units" type="number" placeholder="e.g. 10" step="any" min="0" oninput="updateFundPreview()" />
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Avg Entry Price</label>
+        <label class="form-label" id="lbl-entry">Avg Entry Price</label>
         <input class="form-input" id="f-entry" type="number" placeholder="e.g. 45000" step="any" min="0" oninput="updateFundPreview();recalcPerpUnits()" />
       </div>
       <div class="form-group">
-        <label class="form-label">Current Price</label>
-        <input class="form-input" id="f-current" type="number" placeholder="e.g. 95000" step="any" min="0" />
+        <label class="form-label" id="lbl-current">Current Price</label>
+        <input class="form-input" id="f-current" type="number" placeholder="e.g. 95000" step="any" min="0" oninput="updateFundPreview()" />
       </div>
     </div>
-    <div class="form-row">
+    <div class="form-row" id="f-tp-row">
       <div class="form-group">
         <label class="form-label">Target Price <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
         <input class="form-input" id="f-target" type="number" placeholder="e.g. 150000" step="any" min="0" />
@@ -1643,7 +1653,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <input class="form-input" id="f-invalidation" type="number" placeholder="e.g. 32000" step="any" min="0" />
       </div>
     </div>
-    <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:-8px;margin-bottom:16px">Target = where you'd take profit. Invalidation = the price that kills your thesis — the dashboard warns you when it's crossed (below it for longs, above it for shorts).</div>
+    <div id="f-tp-help" style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:-8px;margin-bottom:16px">Target = where you'd take profit. Invalidation = the price that kills your thesis — the dashboard warns you when it's crossed (below it for longs, above it for shorts).</div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Price Currency</label>
@@ -1664,7 +1674,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <div style="font-size:11px;color:var(--text3);line-height:1.5">Prices entered in the selected currency.<br>All portfolio values shown in USD.</div>
       </div>
     </div>
-    <div class="form-row">
+    <div class="form-row" id="f-ids-row">
       <div class="form-group">
         <label class="form-label">CoinGecko ID <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
         <input class="form-input" id="f-coingecko" placeholder="e.g. solana, bitcoin" />
@@ -1675,11 +1685,11 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5">US stocks use the plain ticker (NVDA, AAPL). International stocks need an exchange suffix — find it by searching the stock on <em>finance.yahoo.com</em> and copying the ticker shown there (e.g. ORSTED.CO, NOVO-B.CO for Danish stocks).</div>
       </div>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="f-thesis-group">
       <label class="form-label">Thesis <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
       <textarea class="form-input" id="f-thesis" placeholder="Why are you holding this asset?"></textarea>
     </div>
-    <div class="form-group" style="margin-bottom:8px">
+    <div class="form-group" id="f-thesisboard-group" style="margin-bottom:8px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
         <input type="checkbox" id="f-show-thesis" checked style="accent-color:var(--cyan);width:14px;height:14px;cursor:pointer" />
         <span style="font-size:12px;font-weight:500;color:var(--text2)">Include in thesis board</span>
@@ -1939,6 +1949,16 @@ const SECTOR_COLORS = {
   "Real Estate":  { color: "#e67e22", bg: "rgba(230,126,34,0.12)"  },
   "Commodities":  { color: "#d4ac0d", bg: "rgba(212,172,13,0.12)"  },
   "Fixed Income": { color: "#85c1e9", bg: "rgba(133,193,233,0.12)" },
+  // Physical-asset categories
+  "Vehicle":         { color: "#3498db", bg: "rgba(52,152,219,0.12)"  },
+  "Jewelry":         { color: "#e84393", bg: "rgba(232,67,147,0.12)"  },
+  "Watches":         { color: "#b8860b", bg: "rgba(184,134,11,0.12)"  },
+  "Art":             { color: "#af7ac5", bg: "rgba(175,122,197,0.12)" },
+  "Collectibles":    { color: "#16a085", bg: "rgba(22,160,133,0.12)"  },
+  "Electronics":     { color: "#5dade2", bg: "rgba(93,173,226,0.12)"  },
+  "Furniture":       { color: "#a0522d", bg: "rgba(160,82,45,0.12)"   },
+  "Boat":            { color: "#1abc9c", bg: "rgba(26,188,156,0.12)"  },
+  "Precious Metals": { color: "#d4af37", bg: "rgba(212,175,55,0.12)"  },
 };
 
 // ── KNOWN PRICE SOURCES ─────────────────────────────────────────────────────
@@ -2211,6 +2231,8 @@ function buildStateJson() {
       invalidationPrice: p.invalidationPrice || null,
       openedDate: p.openedDate || null,
       direction: p.direction || null,
+      physical: p.physical || false,
+      hasCostBasis: p.hasCostBasis || false,
     })),
     cashPositions,
     closedTrades,
@@ -2407,6 +2429,7 @@ async function fetchPrices() {
   // KNOWN_PRICE_SOURCES takes priority over whatever coingeckoId is stored (fixes stale/wrong IDs)
   const cgMap = {};
   portfolio.forEach(p => {
+    if (p.physical) return;
     const known = KNOWN_PRICE_SOURCES[p.ticker?.toUpperCase()];
     const cgId = (known?.coingeckoId) || p.coingeckoId;
     if (cgId) { p._resolvedCgId = cgId; cgMap[cgId] = true; }
@@ -2435,6 +2458,7 @@ async function fetchPrices() {
   // Binance cross-check — verify CoinGecko prices against Binance for tokens with a known USDT pair
   const bnMap = {}; // binanceTicker -> portfolio position
   portfolio.forEach(p => {
+    if (p.physical) return;
     const known = KNOWN_PRICE_SOURCES[p.ticker?.toUpperCase()];
     if (known?.binanceTicker) bnMap[known.binanceTicker] = p;
   });
@@ -2894,13 +2918,15 @@ function renderTable(data) {
         </div>
       </td>
       <td class="right">
-        <input class="price-editable" type="text"
+        ${p.physical
+          ? `<span class="num" style="color:var(--text3)">—</span>`
+          : `<input class="price-editable" type="text"
           value="${privacyMode ? '•••••' : fmtUnits(p.units).replace(/,/g,'')}"
           style="color:${editMode ? 'var(--amber)' : 'var(--text2)'}"
           ${editMode && !privacyMode ? '' : 'readonly tabindex="-1"'}
           onblur="updateUnits(${p.posId}, this.value)"
           onkeydown="if(event.key==='Enter')this.blur()"
-        />
+        />`}
       </td>
       <td class="right">
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
@@ -2937,7 +2963,7 @@ function renderTable(data) {
       </td>
       <td style="text-align:right;width:100px;white-space:nowrap">
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
-          <button class="close-btn" onclick="showCloseModal(${p.posId})">✓ Close</button>
+          ${p.physical ? '' : `<button class="close-btn" onclick="showCloseModal(${p.posId})">✓ Close</button>`}
           <button class="trash-btn" onclick="removeAsset(${p.posId})" title="Remove ${p.ticker} from the portfolio">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           </button>
@@ -2958,6 +2984,9 @@ function updatePrice(posId, rawVal) {
   if (p.currentPrice === val) return;
   pushUndo(`price ${p.ticker} → ${fmtPrice(val)}`);
   p.currentPrice = val;
+  // Physical asset with no declared purchase price: keep entry = value so it stays a pure
+  // net-worth tracker (no phantom gain/loss) as the value is updated over time.
+  if (p.physical && !p.hasCostBasis) p.entryPrice = val;
   saveState();
   // In edit mode keep the table DOM alive so the user can keep editing without
   // losing cursor position. Only update the cards + charts.
@@ -3216,6 +3245,8 @@ function updateEntryPrice(posId, rawVal) {
   if (!p || p.entryPrice === val) return;
   pushUndo(`entry price ${p.ticker} → ${fmtPrice(val)}`);
   p.entryPrice = val;
+  // Editing a physical asset's purchase price declares a cost basis → start tracking gain/loss.
+  if (p.physical) p.hasCostBasis = true;
   saveState();
   if (editMode) { const d = computeAll(); renderSummary(d); renderCharts(d); renderCashSection(d); }
   else renderAll();
@@ -3411,8 +3442,9 @@ function updateFundPreview() {
   if (!cashId) { preview.textContent = ''; return; }
   const c = cashPositions.find(c => c.id === cashId);
   if (!c) { preview.textContent = ''; return; }
-  const units  = parseFloat(document.getElementById('f-units').value);
-  const entry  = parseFloat(document.getElementById('f-entry').value);
+  // Physical assets have no units field — the money tied up is the current value.
+  const units  = _addMode === 'physical' ? 1 : parseFloat(document.getElementById('f-units').value);
+  const entry  = _addMode === 'physical' ? parseFloat(document.getElementById('f-current').value) : parseFloat(document.getElementById('f-entry').value);
   const cur    = document.getElementById('f-currency').value || 'USD';
   if (!isNaN(units) && !isNaN(entry) && units > 0 && entry > 0) {
     const costUSD     = units * entry * (fxRates[cur.toUpperCase()] ?? 1);
@@ -3481,12 +3513,32 @@ function recalcPerpUnits() {
 }
 
 function showAddModal(mode) {
-  _addMode = mode === 'perp' ? 'perp' : 'spot';
-  const perp = _addMode === 'perp';
-  document.getElementById('addModalTitle').textContent   = perp ? 'Add Leverage Position' : 'Add Asset';
-  document.getElementById('addModalSubmitBtn').textContent = perp ? 'Add Position' : 'Add Asset';
-  document.getElementById('leverage-fields').style.display  = perp ? 'block' : 'none';
+  _addMode = mode === 'perp' ? 'perp' : mode === 'physical' ? 'physical' : 'spot';
+  const perp     = _addMode === 'perp';
+  const physical = _addMode === 'physical';
+  document.getElementById('addModalTitle').textContent    = physical ? 'Add Physical Asset' : perp ? 'Add Leverage Position' : 'Add Asset';
+  document.getElementById('addModalSubmitBtn').textContent = physical ? 'Add Asset'          : perp ? 'Add Position'         : 'Add Asset';
+  document.getElementById('leverage-fields').style.display   = perp ? 'block' : 'none';
   document.getElementById('fund-from-cash-row').style.display = perp ? 'none' : 'block';
+  // Physical assets have no ticker, units, live price, targets, price-source IDs or thesis.
+  const hidePhysical = physical ? 'none' : '';
+  document.getElementById('f-ticker-group').style.display     = hidePhysical;
+  document.getElementById('f-units-group').style.display      = hidePhysical;
+  document.getElementById('f-tp-row').style.display           = hidePhysical;
+  document.getElementById('f-tp-help').style.display          = hidePhysical;
+  document.getElementById('f-ids-row').style.display          = hidePhysical;
+  document.getElementById('f-thesis-group').style.display     = hidePhysical;
+  document.getElementById('f-thesisboard-group').style.display = hidePhysical;
+  // Relabel the two price fields when adding a physical asset.
+  document.getElementById('lbl-entry').innerHTML   = physical
+    ? 'Purchase Price <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional — for gain/loss</span>'
+    : 'Avg Entry Price';
+  document.getElementById('lbl-current').textContent = physical ? 'Current Value' : 'Current Price';
+  document.getElementById('f-name').placeholder    = physical ? 'e.g. Tesla Model 3' : 'e.g. Bitcoin';
+  document.getElementById('f-sector').placeholder  = physical ? 'e.g. Vehicle, Real Estate' : 'e.g. Crypto, Technology';
+  document.getElementById('f-sector').setAttribute('list', physical ? 'physical-sector-list' : 'sector-list');
+  document.getElementById('f-entry').placeholder   = physical ? 'what you paid' : 'e.g. 45000';
+  document.getElementById('f-current').placeholder = physical ? 'e.g. 50000' : 'e.g. 95000';
   setAddDirection('long');
   document.getElementById('addModal').classList.add('open');
   // populate cash funding dropdown with current balances
@@ -3522,7 +3574,54 @@ function hideAddModal() {
   _addDirection = 'long';
 }
 
+// Build a short, unique ticker/code from a physical asset's name (used for the row dot + chart grouping).
+function derivePhysicalTicker(name) {
+  const base = (name.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6)) || 'ASSET';
+  let t = base, n = 2;
+  while (portfolio.some(p => p.ticker === t)) { t = base.slice(0, 5) + n; n++; }
+  return t;
+}
+
+function submitPhysicalAsset() {
+  const name     = document.getElementById('f-name').value.trim();
+  const sector   = document.getElementById('f-sector').value.trim() || 'Physical';
+  const currency = document.getElementById('f-currency').value || 'USD';
+  const value    = parseFloat(document.getElementById('f-current').value);
+  const purchRaw = parseFloat(document.getElementById('f-entry').value);
+  const err = document.getElementById('f-error');
+
+  if (!name)                        { err.textContent = 'Name is required.'; return; }
+  if (isNaN(value) || value <= 0)   { err.textContent = 'Enter a valid current value.'; return; }
+  // Purchase price is optional. Without one, entry mirrors the value (P&L stays 0) and
+  // hasCostBasis stays false so later in-place value edits keep entry in sync.
+  const hasCostBasis = !isNaN(purchRaw) && purchRaw > 0;
+  const purchase = hasCostBasis ? purchRaw : value;
+
+  const ticker = derivePhysicalTicker(name);
+  const usedColors = new Set(portfolio.map(p => p.color));
+  const { color, bg } = COLOR_PALETTE.find(c => !usedColors.has(c.color)) || COLOR_PALETTE[portfolio.length % COLOR_PALETTE.length];
+
+  pushUndo(`add ${name}`);
+  portfolio.push({ name, ticker, sector, units: 1, entryPrice: purchase, currentPrice: value, targetPrice: null, invalidationPrice: null, currency, color, bg, thesis: '', leveraged: false, marginUSD: null, showThesis: false, coingeckoId: null, yahooTicker: null, direction: null, physical: true, hasCostBasis, openedDate: today(), posId: nextPosId++ });
+
+  // subtract cost from selected cash holding (value tied up when you bought it)
+  const fundCashId = parseInt(document.getElementById('f-fund-cash').value);
+  if (fundCashId) {
+    const cashPos = cashPositions.find(c => c.id === fundCashId);
+    if (cashPos) {
+      const costUSD       = value * (fxRates[currency.toUpperCase()] ?? 1);
+      const cashFxRate    = fxRates[(cashPos.currency || 'USD').toUpperCase()] ?? 1;
+      cashPos.amount = Math.max(0, cashPos.amount - costUSD / cashFxRate);
+    }
+  }
+
+  saveState();
+  hideAddModal();
+  renderAll();
+}
+
 function submitAddAsset() {
+  if (_addMode === 'physical') { submitPhysicalAsset(); return; }
   const name     = document.getElementById('f-name').value.trim();
   const ticker   = document.getElementById('f-ticker').value.trim().toUpperCase();
   const sector   = document.getElementById('f-sector').value.trim() || 'Other';
