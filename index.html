@@ -584,12 +584,12 @@ textarea.thesis-text:focus {
   font-size: 10px;
   color: var(--text3);
 }
-.undo-btn {
+.thesis-undo-btn {
   background: none; border: 1px solid var(--border2); color: var(--text3);
   border-radius: 4px; padding: 1px 7px; font-size: 11px; cursor: pointer;
   font-family: var(--sans); transition: all 0.15s; line-height: 1.5;
 }
-.undo-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.thesis-undo-btn:hover { border-color: var(--cyan); color: var(--cyan); }
 
 /* ── THESIS UPDATES ── */
 .updates-section {
@@ -1097,11 +1097,11 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
   <div class="header-right">
     <div class="header-time" id="clock"></div>
     <button class="undo-btn" id="undoBtn" onclick="undoLast()" disabled title="Undo last action (⌘Z)">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7v6h6"/><path d="M3 13C5 7.5 10 4 16 4a9 9 0 0 1 0 18H8"/></svg>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
       Undo
     </button>
     <button class="undo-btn" id="redoBtn" onclick="redoLast()" disabled title="Nothing to redo">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 7v6h-6"/><path d="M21 13C19 7.5 14 4 8 4a9 9 0 0 0 0 18h8"/></svg>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
       Redo
     </button>
     <button class="edit-btn" id="editBtn" onclick="toggleEditMode()" title="Edit mode — change prices, units, cash holdings, colors, or remove assets">
@@ -1792,6 +1792,11 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       <button class="modal-close" onclick="cancelRealizedModal()">✕</button>
     </div>
     <div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6" id="realizedModalDesc"></div>
+    <div class="form-group" id="realizedSellPriceRow" style="display:none">
+      <label class="form-label">Sold at price <span id="realizedSellPriceCur" style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0"></span></label>
+      <input class="form-input" id="realizedSellPrice" type="number" step="any" min="0" oninput="onRealizedSellPriceInput()" />
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Pre-filled with the current price — change it to the price you actually sold at, and the P&amp;L below updates.</div>
+    </div>
     <div class="form-group">
       <label class="form-label" id="realizedInputLabel">Realized P&amp;L to add (USD)</label>
       <input class="form-input" id="realizedInput" type="number" step="any" placeholder="e.g. 1100" oninput="updateRealizedFundPreview()" />
@@ -2318,17 +2323,34 @@ function importBackup(input) {
 // ── UNDO ─────────────────────────────────────────────────────────────────────
 
 const UNDO_MAX = 30;
-let undoStack = []; // [{ desc, portfolio, cashPositions, closedTrades }, ...]
+let undoStack = []; // [{ desc, portfolio, cashPositions, closedTrades, privateAssets, privateCash, airdrops, historyData, historyModified }, ...]
 let redoStack = [];
 let _undoToastTimer = null;
 
 function snapState(desc) {
   return {
     desc,
-    portfolio:     JSON.parse(JSON.stringify(portfolio)),
-    cashPositions: JSON.parse(JSON.stringify(cashPositions)),
-    closedTrades:  JSON.parse(JSON.stringify(closedTrades)),
+    portfolio:      JSON.parse(JSON.stringify(portfolio)),
+    cashPositions:  JSON.parse(JSON.stringify(cashPositions)),
+    closedTrades:   JSON.parse(JSON.stringify(closedTrades)),
+    privateAssets:  JSON.parse(JSON.stringify(privateAssets)),
+    privateCash:    JSON.parse(JSON.stringify(privateCash)),
+    airdrops:       JSON.parse(JSON.stringify(airdrops)),
+    historyData:    JSON.parse(JSON.stringify(historyData)),
+    historyModified,
   };
+}
+
+// Restore every collection a snapshot captured back into module state.
+function applySnap(snap) {
+  portfolio      = snap.portfolio;
+  cashPositions  = snap.cashPositions;
+  closedTrades   = snap.closedTrades;
+  privateAssets  = snap.privateAssets;
+  privateCash    = snap.privateCash;
+  airdrops       = snap.airdrops;
+  historyData    = snap.historyData;
+  historyModified = snap.historyModified;
 }
 
 function pushUndo(desc) {
@@ -2343,9 +2365,7 @@ function undoLast() {
   const snap = undoStack.pop();
   if (!snap) return;
   redoStack.push(snapState(snap.desc));
-  portfolio     = snap.portfolio;
-  cashPositions = snap.cashPositions;
-  closedTrades  = snap.closedTrades;
+  applySnap(snap);
   saveState();
   renderAll();
   refreshUndoBtn();
@@ -2357,9 +2377,7 @@ function redoLast() {
   const snap = redoStack.pop();
   if (!snap) return;
   undoStack.push(snapState(snap.desc));
-  portfolio     = snap.portfolio;
-  cashPositions = snap.cashPositions;
-  closedTrades  = snap.closedTrades;
+  applySnap(snap);
   saveState();
   renderAll();
   refreshUndoBtn();
@@ -2373,8 +2391,6 @@ function refreshUndoBtn() {
   const top = undoStack[undoStack.length - 1];
   btn.disabled = !top;
   btn.title = top ? `Undo: ${top.desc} (⌘Z)` : 'Nothing to undo';
-  const undoShort = top && top.desc.length > 20 ? top.desc.slice(0, 18) + '…' : top?.desc;
-  btn.childNodes[1].textContent = top ? ` Undo: ${undoShort}` : ' Undo';
 }
 
 function refreshRedoBtn() {
@@ -2383,8 +2399,6 @@ function refreshRedoBtn() {
   const top = redoStack[redoStack.length - 1];
   btn.disabled = !top;
   btn.title = top ? `Redo: ${top.desc} (⌘⇧Z)` : 'Nothing to redo';
-  const redoShort = top && top.desc.length > 20 ? top.desc.slice(0, 18) + '…' : top?.desc;
-  btn.childNodes[1].textContent = top ? ` Redo: ${redoShort}` : ' Redo';
 }
 
 function showUndoToast(msg) {
@@ -3290,10 +3304,13 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedModalTitle').textContent = 'Lock in Realized P&L';
     document.getElementById('realizedModalDesc').innerHTML =
       `Reducing <strong>${p.ticker}</strong> from <strong>${fmtUnits(p.units)}</strong> → <strong>${fmtUnits(val)}</strong> units.<br>` +
-      `${fmtUnits(soldQty)} sold at current price ${fmtPrice(p.currentPrice)} vs entry ${fmtPrice(p.entryPrice)}.`;
+      `${fmtUnits(soldQty)} sold vs entry ${fmtPrice(p.entryPrice)} — enter your actual sell price below.`;
     document.getElementById('realizedInputLabel').textContent = 'Realized P&L to add (USD)';
     document.getElementById('realizedInputHint').textContent = 'Negative = realized loss. Zero = no change.';
     document.getElementById('realizedInput').value = gain.toFixed(2);
+    document.getElementById('realizedSellPrice').value = p.currentPrice.toFixed(p.currentPrice >= 1 ? 2 : 4);
+    document.getElementById('realizedSellPriceCur').textContent = (p.currency && p.currency !== 'USD') ? '(' + p.currency + ')' : '(USD)';
+    document.getElementById('realizedSellPriceRow').style.display = 'block';
     document.getElementById('realizedFundRow').style.display = 'none';
     document.getElementById('realizedModal').classList.add('open');
   } else if (val > p.units) {
@@ -3306,6 +3323,7 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedInputLabel').textContent = 'Price you\'re adding at';
     document.getElementById('realizedInputHint').textContent = 'Entry price will update to the weighted average.';
     document.getElementById('realizedInput').value = p.currentPrice.toFixed(p.currentPrice >= 1 ? 2 : 4);
+    document.getElementById('realizedSellPriceRow').style.display = 'none';
     // populate cash funding row
     const fundSel = document.getElementById('realizedFundCash');
     fundSel.innerHTML = `<option value="">— don't adjust cash —</option>` +
@@ -3346,8 +3364,22 @@ function editRealized(posId) {
   document.getElementById('realizedInputLabel').textContent = 'Realized P&L (USD)';
   document.getElementById('realizedInputHint').textContent = 'Negative = realized loss. Zero = clears it.';
   document.getElementById('realizedInput').value = (p.realizedPnl || 0).toFixed(2);
+  document.getElementById('realizedSellPriceRow').style.display = 'none';
   document.getElementById('realizedFundRow').style.display = 'none';
   document.getElementById('realizedModal').classList.add('open');
+}
+
+// Reduce-units flow: recompute the realized P&L from the user's actual sell price.
+function onRealizedSellPriceInput() {
+  if (!_pendingUnits || _pendingUnits.mode !== 'reduce') return;
+  const p = portfolio.find(p => p.posId === _pendingUnits.posId);
+  if (!p) return;
+  const sellPrice = parseFloat(document.getElementById('realizedSellPrice').value);
+  if (isNaN(sellPrice) || sellPrice <= 0) return;
+  const soldQty = _pendingUnits.oldUnits - _pendingUnits.newUnits;
+  const rate    = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
+  const gain    = dirSign(p) * soldQty * (sellPrice - p.entryPrice) * rate;
+  document.getElementById('realizedInput').value = gain.toFixed(2);
 }
 
 function confirmRealizedModal() {
@@ -3978,7 +4010,7 @@ function renderThesisCard(p, totalValue) {
     <div class="thesis-footer">
       <span class="thesis-saved" id="saved-${p.posId}">auto-saved</span>
       <div style="display:flex;align-items:center;gap:8px">
-        <button class="undo-btn" onclick="undoThesis(${p.posId})" title="Undo last change">↩ undo</button>
+        <button class="thesis-undo-btn" onclick="undoThesis(${p.posId})" title="Undo last change">↩ undo</button>
         <span class="thesis-chars" id="chars-${p.posId}">${thesis.length} chars</span>
       </div>
     </div>
@@ -4606,6 +4638,7 @@ function deleteHistoryEntry(date) {
   if (!historyModified) {
     // Still demo data — deleting one row means "get rid of the fake stuff", so offer to clear it all
     if (!confirm('This chart is demo data. Remove ALL demo entries and start fresh?\n\n(Your own snapshots will build the chart from here on.)')) return;
+    pushUndo('clear demo history');
     historyModified = true;
     historyData = [];
     saveState();
@@ -4613,7 +4646,8 @@ function deleteHistoryEntry(date) {
     renderSummary(computeAll());
     return;
   }
-  if (!confirm(`Delete the history entry for ${date}? This cannot be undone.`)) return;
+  if (!confirm(`Delete the history entry for ${date}?`)) return;
+  pushUndo(`delete snapshot ${date}`);
   historyData = historyData.filter(d => d.date !== date);
   saveState();
   renderHistorySection();
@@ -4670,6 +4704,7 @@ function submitHistoryEntry() {
   if (!monthVal)    { err.textContent = 'Pick a month.'; return; }
   if (isNaN(value)) { err.textContent = 'Enter a valid value.'; return; }
 
+  pushUndo(`snapshot ${monthVal}`);
   if (!historyModified) {
     // First real snapshot — clear the demo history so the chart starts fresh
     historyModified = true;
@@ -5014,11 +5049,13 @@ function submitPrivateAsset() {
     const entryPrice  = hasCostBasis ? entryRaw : null;
     const curRaw      = parseFloat(document.getElementById('pa-current').value);
     const currentPrice = (!isNaN(curRaw) && curRaw > 0) ? curRaw : (entryPrice || null);
+    pushUndo(`add ${name}`);
     privateAssets.push({ id: nextPrivateAssetId++, name, category, ticker, coingeckoId, yahooTicker, units, entryPrice, currentPrice, currency, hasCostBasis });
   } else {
     const value    = parseFloat(document.getElementById('pa-value').value);
     const currency = document.getElementById('pa-currency').value;
     if (isNaN(value) || value < 0) { document.getElementById('pa-error').textContent = 'Enter a valid value.'; return; }
+    pushUndo(`add ${name}`);
     privateAssets.push({ id: nextPrivateAssetId++, name, category, value, currency });
   }
 
@@ -5030,7 +5067,8 @@ function submitPrivateAsset() {
 function removePrivateAsset(id) {
   const a = privateAssets.find(a => a.id === id);
   if (!a) return;
-  if (!confirm(`Remove "${a.name}" from private assets? This cannot be undone.`)) return;
+  if (!confirm(`Remove "${a.name}" from private assets?`)) return;
+  pushUndo(`remove ${a.name}`);
   privateAssets = privateAssets.filter(x => x.id !== id);
   saveState();
   renderPrivateTab();
@@ -5108,6 +5146,7 @@ function submitPrivateCash() {
   const currency = document.getElementById('pc-currency').value;
   if (!label)  { document.getElementById('pc-error').textContent = 'Label is required.'; return; }
   if (isNaN(amount) || amount < 0) { document.getElementById('pc-error').textContent = 'Enter a valid amount.'; return; }
+  pushUndo(`${_editingPrivateCashId !== null ? 'edit' : 'add'} cash ${label}`);
   if (_editingPrivateCashId !== null) {
     const entry = privateCash.find(c => c.id === _editingPrivateCashId);
     if (entry) { entry.label = label; entry.amount = amount; entry.currency = currency; }
@@ -5121,7 +5160,8 @@ function submitPrivateCash() {
 function removePrivateCash(id) {
   const c = privateCash.find(c => c.id === id);
   if (!c) return;
-  if (!confirm(`Remove "${c.label}" from private cash? This cannot be undone.`)) return;
+  if (!confirm(`Remove "${c.label}" from private cash?`)) return;
+  pushUndo(`remove cash ${c.label}`);
   privateCash = privateCash.filter(x => x.id !== id);
   saveState();
   renderPrivateTab();
@@ -5131,6 +5171,7 @@ function updatePrivateCashAmount(id, rawVal) {
   if (isNaN(val) || val < 0) return;
   const entry = privateCash.find(c => c.id === id);
   if (!entry || entry.amount === val) return;
+  pushUndo(`edit cash ${entry.label}`);
   entry.amount = val;
   saveState();
   renderPrivateTab();
@@ -5140,6 +5181,7 @@ function updatePrivateAssetValue(id, rawVal) {
   if (isNaN(val) || val < 0) return;
   const asset = privateAssets.find(a => a.id === id);
   if (!asset || asset.value === val) return;
+  pushUndo(`edit ${asset.name}`);
   asset.value = val;
   saveState();
   renderPrivateTab();
@@ -5149,6 +5191,7 @@ function updatePrivateAssetUnits(id, rawVal) {
   if (isNaN(val) || val < 0) return;
   const asset = privateAssets.find(a => a.id === id);
   if (!asset || asset.units === val) return;
+  pushUndo(`edit ${asset.name}`);
   asset.units = val;
   saveState();
   renderPrivateTab();
@@ -5160,6 +5203,7 @@ function updatePrivateAssetPrice(id, rawVal) {
   if (isNaN(val) || val <= 0) return;
   const asset = privateAssets.find(a => a.id === id);
   if (!asset || asset.currentPrice === val) return;
+  pushUndo(`edit ${asset.name}`);
   asset.currentPrice = val;
   saveState();
   renderPrivateTab();
@@ -5671,6 +5715,7 @@ function submitAirdrop() {
     tasks:          _adTasks.filter(t => t.text.trim()),
   };
 
+  pushUndo(`${_editingAirdropId !== null ? 'edit' : 'add'} airdrop ${name}`);
   if (_editingAirdropId !== null) {
     const idx = airdrops.findIndex(a => a.id === _editingAirdropId);
     if (idx >= 0) {
@@ -5689,7 +5734,9 @@ function submitAirdrop() {
 }
 
 function removeAirdrop(id) {
+  const a = airdrops.find(a => a.id === id);
   if (!confirm('Remove this airdrop?')) return;
+  pushUndo(`remove airdrop ${a ? a.name : ''}`);
   airdrops = airdrops.filter(a => a.id !== id);
   expandedAirdrops.delete(id);
   saveState();
