@@ -1809,6 +1809,36 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       </select>
       <div id="realizedFundPreview" style="font-size:11px;color:var(--text3);margin-top:4px;min-height:16px"></div>
     </div>
+    <div id="realizedLogSection" style="display:none;margin-bottom:12px">
+      <div class="form-label" style="margin-bottom:8px">Trade Log</div>
+      <div id="realizedLogTable"></div>
+      <div id="realizedLogAvgs" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.6"></div>
+      <button class="airdrop-action-btn" style="margin-top:10px" onclick="toggleLogPastTrade()">+ Log past trade</button>
+      <div id="logPastTradeForm" style="display:none;margin-top:10px;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Date</label>
+            <input class="form-input" id="lpt-date" type="date" />
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Side</label>
+            <select class="form-input" id="lpt-side"><option value="sell">Sell</option><option value="buy">Buy</option></select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Units</label>
+            <input class="form-input" id="lpt-units" type="number" step="any" min="0" />
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Price <span id="lpt-price-cur" style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0"></span></label>
+            <input class="form-input" id="lpt-price" type="number" step="any" min="0" />
+          </div>
+        </div>
+        <div class="form-error" id="lpt-error"></div>
+        <button class="btn-primary" style="padding:8px 16px;font-size:12px" onclick="submitPastTrade()">Add to log</button>
+      </div>
+    </div>
     <div class="form-actions">
       <button class="btn-secondary" onclick="cancelRealizedModal()">Cancel</button>
       <button class="btn-primary" onclick="confirmRealizedModal()">Confirm</button>
@@ -2254,6 +2284,7 @@ function buildStateJson() {
       yahooTicker: p.yahooTicker || null,
       posId: p.posId,
       realizedPnl: p.realizedPnl || 0,
+      tradeLog: p.tradeLog || [],
       targetPrice: p.targetPrice || null,
       invalidationPrice: p.invalidationPrice || null,
       openedDate: p.openedDate || null,
@@ -2990,7 +3021,7 @@ function renderTable(data) {
       <td class="right">
         <div class="pnl-cell">
           <span class="pnl-usd ${p.totalPnlUsd >= 0 ? 'pos' : 'neg'}">${fmtUsd(p.totalPnlUsd)}</span>
-          ${p.realizedPnl ? `<span class="realized-sub" onclick="editRealized(${p.posId})" title="Click to edit">incl. ${fmtUsd(p.realizedPnl)} realized</span>` : ''}
+          ${(p.realizedPnl || (p.tradeLog && p.tradeLog.length)) ? `<span class="realized-sub" onclick="editRealized(${p.posId})" title="Click for trade log & realized P&L">${p.realizedPnl ? `incl. ${fmtUsd(p.realizedPnl)} realized` : 'trade log'}</span>` : ''}
         </div>
       </td>
       <td class="right">
@@ -3101,6 +3132,7 @@ function submitClosePosition() {
     closedDate: today(),
     outcome:    document.getElementById('closeOutcome').value.trim() || null,
     thesis:     (p.thesis || '').trim() || null,
+    tradeLog:   [...(p.tradeLog || []), { date: today(), side: 'sell', units: p.units, price: closePriceVal, pnlUSD: pnlOnRemaining }],
   });
 
   portfolio = portfolio.filter(p => p.posId !== _closingPosId);
@@ -3221,7 +3253,12 @@ function renderClosedTrades() {
           </td>
           <td class="closed-outcome" style="text-align:left" onclick="this.classList.toggle('expanded')" title="Click to expand">${escHtml(t.outcome || '—')}${t.thesis ? `<div class="closed-thesis">Thesis at close: “${escHtml(t.thesis)}”</div>` : ''}</td>
           <td>${fmtNative(t.entryPrice, t.currency)}</td>
-          <td>${fmtNative(t.closePrice, t.currency)}</td>
+          <td>${fmtNative(t.closePrice, t.currency)}${(() => {
+            const sells = (t.tradeLog || []).filter(e => e.side === 'sell');
+            if (sells.length < 2) return '';
+            const { avgExit } = tradeLogAverages(t.tradeLog);
+            return `<br><span style="font-size:10px;color:var(--text3)" title="Weighted average across all ${sells.length} sells, including partial TPs">avg ${fmtNative(avgExit, t.currency)}</span>`;
+          })()}</td>
           <td><span class="closed-pnl ${t.pnlPct >= 0 ? 'pos' : 'neg'}">${t.pnlPct >= 0 ? '+' : ''}${t.pnlPct.toFixed(1)}%</span></td>
           <td><span class="closed-pnl ${t.totalPnlUsd >= 0 ? 'pos' : 'neg'}">${fmtUsd(t.totalPnlUsd)}</span></td>
           <td style="color:var(--text3);font-size:11px">${t.closedDate}${holdDays(t) != null ? `<br><span style="font-size:10px;font-family:var(--mono)">held ${holdDays(t)}d</span>` : ''}</td>
@@ -3314,6 +3351,7 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedSellPriceCur').textContent = (p.currency && p.currency !== 'USD') ? '(' + p.currency + ')' : '(USD)';
     document.getElementById('realizedSellPriceRow').style.display = 'block';
     document.getElementById('realizedFundRow').style.display = 'none';
+    document.getElementById('realizedLogSection').style.display = 'none';
     document.getElementById('realizedModal').classList.add('open');
   } else if (val > p.units) {
     const addedQty = val - p.units;
@@ -3326,6 +3364,7 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedInputHint').textContent = 'Entry price will update to the weighted average.';
     document.getElementById('realizedInput').value = p.currentPrice.toFixed(p.currentPrice >= 1 ? 2 : 4);
     document.getElementById('realizedSellPriceRow').style.display = 'none';
+    document.getElementById('realizedLogSection').style.display = 'none';
     // populate cash funding row
     const fundSel = document.getElementById('realizedFundCash');
     fundSel.innerHTML = `<option value="">— don't adjust cash —</option>` +
@@ -3368,7 +3407,109 @@ function editRealized(posId) {
   document.getElementById('realizedInput').value = (p.realizedPnl || 0).toFixed(2);
   document.getElementById('realizedSellPriceRow').style.display = 'none';
   document.getElementById('realizedFundRow').style.display = 'none';
+  _logViewPosId = posId;
+  document.getElementById('realizedLogSection').style.display = 'block';
+  document.getElementById('logPastTradeForm').style.display = 'none';
+  document.getElementById('lpt-price-cur').textContent = '(' + (p.currency || 'USD') + ')';
+  renderRealizedLog(p);
   document.getElementById('realizedModal').classList.add('open');
+}
+
+// ── TRADE LOG (per-position journal of partial sells & buybacks) ─────────────
+let _logViewPosId = null;
+
+function tradeLogAverages(log) {
+  const avg = arr => {
+    const units = arr.reduce((s, e) => s + e.units, 0);
+    return units > 0 ? arr.reduce((s, e) => s + e.units * e.price, 0) / units : null;
+  };
+  const sells = log.filter(e => e.side === 'sell');
+  const buys  = log.filter(e => e.side === 'buy');
+  return { avgExit: avg(sells), soldUnits: sells.reduce((s, e) => s + e.units, 0),
+           avgBuy: avg(buys),  boughtUnits: buys.reduce((s, e) => s + e.units, 0) };
+}
+
+function renderRealizedLog(p) {
+  const table = document.getElementById('realizedLogTable');
+  const avgsEl = document.getElementById('realizedLogAvgs');
+  if (!table || !avgsEl) return;
+  const log = [...(p.tradeLog || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  if (!log.length) {
+    table.innerHTML = '<div style="font-size:12px;color:var(--text3)">No trades logged yet. Partial sells and buybacks land here automatically from now on — use “Log past trade” for older ones.</div>';
+    avgsEl.innerHTML = '';
+    return;
+  }
+  const cellStyle = 'padding:5px 8px;border-bottom:1px solid var(--border);font-family:var(--mono)';
+  table.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr>
+      <th style="text-align:left;padding:0 8px 6px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">Date</th>
+      <th style="text-align:left;padding:0 8px 6px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">Side</th>
+      <th style="text-align:right;padding:0 8px 6px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">Units</th>
+      <th style="text-align:right;padding:0 8px 6px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">Price</th>
+      <th style="text-align:right;padding:0 8px 6px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">P&L</th>
+      <th></th>
+    </tr></thead>
+    <tbody>${log.map(e => {
+      const origIdx = (p.tradeLog || []).indexOf(e);
+      return `<tr>
+        <td style="${cellStyle};color:var(--text2)">${escHtml(e.date || '—')}</td>
+        <td style="${cellStyle};color:${e.side === 'sell' ? 'var(--red)' : 'var(--green)'}">${e.side === 'sell' ? 'Sell' : 'Buy'}</td>
+        <td style="${cellStyle};text-align:right">${privacyMode ? '•••' : fmtUnits(e.units)}</td>
+        <td style="${cellStyle};text-align:right">${fmtNative(e.price, p.currency)}</td>
+        <td style="${cellStyle};text-align:right;color:${e.pnlUSD == null ? 'var(--text3)' : e.pnlUSD >= 0 ? 'var(--green)' : 'var(--red)'}">${e.pnlUSD == null ? '—' : (privacyMode ? '•••' : (e.pnlUSD >= 0 ? '+' : '') + fmtUsd(e.pnlUSD))}</td>
+        <td style="${cellStyle};text-align:right"><button class="lboard-del" onclick="removeLogEntry(${origIdx})" title="Remove entry">✕</button></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+  const { avgExit, soldUnits, avgBuy, boughtUnits } = tradeLogAverages(log);
+  avgsEl.innerHTML =
+    (avgExit != null ? `Avg exit <b style="color:var(--text)">${fmtNative(avgExit, p.currency)}</b> across ${privacyMode ? '•••' : fmtUnits(soldUnits)} sold` : '') +
+    (avgExit != null && avgBuy != null ? ' · ' : '') +
+    (avgBuy != null ? `Avg buyback <b style="color:var(--text)">${fmtNative(avgBuy, p.currency)}</b> across ${privacyMode ? '•••' : fmtUnits(boughtUnits)} bought` : '');
+}
+
+function toggleLogPastTrade() {
+  const f = document.getElementById('logPastTradeForm');
+  const show = f.style.display === 'none';
+  f.style.display = show ? 'block' : 'none';
+  if (show) {
+    document.getElementById('lpt-date').value = today();
+    document.getElementById('lpt-side').value = 'sell';
+    document.getElementById('lpt-units').value = '';
+    document.getElementById('lpt-price').value = '';
+    document.getElementById('lpt-error').textContent = '';
+  }
+}
+
+function submitPastTrade() {
+  const p = portfolio.find(p => p.posId === _logViewPosId);
+  if (!p) return;
+  const err   = document.getElementById('lpt-error');
+  const side  = document.getElementById('lpt-side').value === 'buy' ? 'buy' : 'sell';
+  const units = parseFloat(document.getElementById('lpt-units').value);
+  const price = parseFloat(document.getElementById('lpt-price').value);
+  const date  = document.getElementById('lpt-date').value || today();
+  if (isNaN(units) || units <= 0) { err.textContent = 'Enter valid units.'; return; }
+  if (isNaN(price) || price <= 0) { err.textContent = 'Enter a valid price.'; return; }
+  pushUndo(`log past ${side} ${p.ticker}`);
+  if (!p.tradeLog) p.tradeLog = [];
+  const rate = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
+  const pnlUSD = side === 'sell' ? dirSign(p) * units * (price - p.entryPrice) * rate : null;
+  p.tradeLog.push({ date, side, units, price, pnlUSD });
+  saveState();
+  document.getElementById('logPastTradeForm').style.display = 'none';
+  renderRealizedLog(p);
+  renderTable(computeAll());
+}
+
+function removeLogEntry(idx) {
+  const p = portfolio.find(p => p.posId === _logViewPosId);
+  if (!p || !p.tradeLog || !p.tradeLog[idx]) return;
+  pushUndo(`remove log entry ${p.ticker}`);
+  p.tradeLog.splice(idx, 1);
+  saveState();
+  renderRealizedLog(p);
+  renderTable(computeAll());
 }
 
 // Reduce-units flow: recompute the realized P&L from the user's actual sell price.
@@ -3399,6 +3540,10 @@ function confirmRealizedModal() {
       const addPrice   = val;
       p.entryPrice     = (oldUnits * p.entryPrice + addedQty * addPrice) / newUnits;
       p.units          = newUnits;
+      if (addPrice > 0) {
+        if (!p.tradeLog) p.tradeLog = [];
+        p.tradeLog.push({ date: today(), side: 'buy', units: addedQty, price: addPrice, pnlUSD: null });
+      }
       const fundCashId = parseInt(document.getElementById('realizedFundCash').value);
       if (fundCashId) {
         const cashPos = cashPositions.find(c => c.id === fundCashId);
@@ -3411,6 +3556,10 @@ function confirmRealizedModal() {
     } else if (mode === 'reduce') {
       p.units          = newUnits;
       p.realizedPnl    = (p.realizedPnl || 0) + val;
+      const sellRaw    = parseFloat(document.getElementById('realizedSellPrice').value);
+      const sellPrice  = (!isNaN(sellRaw) && sellRaw > 0) ? sellRaw : p.currentPrice;
+      if (!p.tradeLog) p.tradeLog = [];
+      p.tradeLog.push({ date: today(), side: 'sell', units: oldUnits - newUnits, price: sellPrice, pnlUSD: val });
     } else if (mode === 'editRealized') {
       p.realizedPnl    = val;
     }
