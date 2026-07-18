@@ -3483,14 +3483,14 @@ function toggleLogPastTrade() {
 
 function submitPastTrade() {
   const p = portfolio.find(p => p.posId === _logViewPosId);
-  if (!p) return;
+  if (!p) return false;
   const err   = document.getElementById('lpt-error');
   const side  = document.getElementById('lpt-side').value === 'buy' ? 'buy' : 'sell';
   const units = parseFloat(document.getElementById('lpt-units').value);
   const price = parseFloat(document.getElementById('lpt-price').value);
   const date  = document.getElementById('lpt-date').value || today();
-  if (isNaN(units) || units <= 0) { err.textContent = 'Enter valid units.'; return; }
-  if (isNaN(price) || price <= 0) { err.textContent = 'Enter a valid price.'; return; }
+  if (isNaN(units) || units <= 0) { err.textContent = 'Enter valid units.'; return false; }
+  if (isNaN(price) || price <= 0) { err.textContent = 'Enter a valid price.'; return false; }
   pushUndo(`log past ${side} ${p.ticker}`);
   if (!p.tradeLog) p.tradeLog = [];
   const rate = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
@@ -3500,6 +3500,7 @@ function submitPastTrade() {
   document.getElementById('logPastTradeForm').style.display = 'none';
   renderRealizedLog(p);
   renderTable(computeAll());
+  return true;
 }
 
 function removeLogEntry(idx) {
@@ -3528,6 +3529,16 @@ function onRealizedSellPriceInput() {
 function confirmRealizedModal() {
   if (!_pendingUnits) return;
   const { posId, newUnits, oldUnits, mode } = _pendingUnits;
+  // If the backfill form is open with anything typed in it, Confirm must submit it too —
+  // otherwise the typed trade is silently discarded. On validation error, stay open.
+  if (mode === 'editRealized') {
+    const lptForm = document.getElementById('logPastTradeForm');
+    if (lptForm && lptForm.style.display !== 'none') {
+      const hasInput = String(document.getElementById('lpt-units').value) !== '' ||
+                       String(document.getElementById('lpt-price').value) !== '';
+      if (hasInput && !submitPastTrade()) return;
+    }
+  }
   const p = portfolio.find(p => p.posId === posId);
   if (p) {
     const val = parseFloat(document.getElementById('realizedInput').value) || 0;
