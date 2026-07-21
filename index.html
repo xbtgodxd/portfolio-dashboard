@@ -2084,6 +2084,39 @@ function migrateState() {
   });
 }
 
+// Thesis images went from single → multiple (2026-07). Old data stored one image per
+// slot (a string in chartImages[ticker], a chartImage string per update). Normalize both
+// to arrays in place so every render/mutation path can assume a list. Idempotent.
+function normalizeThesisImages() {
+  Object.keys(chartImages).forEach(t => {
+    if (!Array.isArray(chartImages[t])) chartImages[t] = chartImages[t] ? [chartImages[t]] : [];
+  });
+  portfolio.forEach(p => (p.updates || []).forEach(u => {
+    if (!Array.isArray(u.images)) u.images = u.chartImage ? [u.chartImage] : [];
+    delete u.chartImage;
+  }));
+}
+
+// Image lists for a thesis card / an update — always an array, even for un-normalized data.
+function thesisImgs(ticker) {
+  const v = chartImages[ticker];
+  return !v ? [] : Array.isArray(v) ? v : [v];
+}
+function updateImgs(u) {
+  return Array.isArray(u.images) ? u.images : (u.chartImage ? [u.chartImage] : []);
+}
+
+// Downscale a loaded <img> to a JPEG data URL (shared by every image-add path).
+function downscaleToDataUrl(img) {
+  const MAX = 1200;
+  const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(img.width  * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.82);
+}
+
 function deduplicateColors() {
   const usedColors = new Set([CASH_COLOR]); // reserve cash color upfront
   portfolio.forEach(p => {
@@ -2239,6 +2272,7 @@ function loadState() {
     ? saved.historyData
     : DEFAULT_HISTORY.map(d => ({...d}));
   chartImages = saved.chartImages || {};
+  normalizeThesisImages();
   privateAssets       = saved.privateAssets  || [];
   privateCash         = saved.privateCash    || [];
   nextPrivateAssetId  = saved.nextPrivateAssetId || (privateAssets.length ? Math.max(...privateAssets.map(a => a.id)) + 1 : 1);
@@ -4176,22 +4210,26 @@ function renderThesisCard(p, totalValue) {
         <span class="thesis-chars" id="chars-${p.posId}">${thesis.length} chars</span>
       </div>
     </div>
-    ${chartImages[p.ticker] ? `
-    <div class="chart-preview-wrap" onclick="showLightbox('${p.ticker}')">
-      <img src="${chartImages[p.ticker]}" alt="Chart for ${p.ticker}" />
-      <div class="chart-preview-overlay">
-        <button class="chart-overlay-btn" onclick="event.stopPropagation();showLightbox('${p.ticker}')">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-          Expand
-        </button>
-        <button class="chart-overlay-btn danger" onclick="event.stopPropagation();removeChartImage('${p.ticker}')">Remove</button>
-      </div>
-    </div>` : `
-    <div class="chart-upload-area" onclick="triggerChartUpload('${p.ticker}')">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-      Add chart screenshot · or paste ⌘V
-    </div>`}
-    <input type="file" id="chart-input-${p.ticker}" accept="image/*" style="display:none"
+    ${(() => {
+      const imgs = thesisImgs(p.ticker);
+      const tiles = imgs.map((src, i) => `
+      <div class="chart-preview-wrap" onclick="showLightbox('${p.ticker}',${i})" style="margin-top:8px">
+        <img src="${src}" alt="Chart for ${p.ticker}" />
+        <div class="chart-preview-overlay">
+          <button class="chart-overlay-btn" onclick="event.stopPropagation();showLightbox('${p.ticker}',${i})">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            Expand
+          </button>
+          <button class="chart-overlay-btn danger" onclick="event.stopPropagation();removeChartImage('${p.ticker}',${i})">Remove</button>
+        </div>
+      </div>`).join('');
+      return tiles + `
+      <div class="chart-upload-area" onclick="triggerChartUpload('${p.ticker}')" style="margin-top:8px">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        ${imgs.length ? 'Add another screenshot' : 'Add chart screenshot'} · or paste ⌘V
+      </div>`;
+    })()}
+    <input type="file" id="chart-input-${p.ticker}" accept="image/*" multiple style="display:none"
       onchange="handleChartUpload('${p.ticker}', this)" />
     ${(() => {
       const updates = (p.updates || []).slice().reverse();
@@ -4214,22 +4252,26 @@ function renderThesisCard(p, totalValue) {
             <span class="update-saved" id="update-saved-${p.posId}-${u.uid}">auto-saved</span>
             <span class="update-chars" id="update-chars-${p.posId}-${u.uid}">${u.text.length} chars</span>
           </div>
-          ${u.chartImage ? `
-          <div class="chart-preview-wrap" onclick="openUpdateLightbox(${p.posId},${u.uid})" style="margin-top:8px">
-            <img src="${u.chartImage}" alt="Update chart" />
-            <div class="chart-preview-overlay">
-              <button class="chart-overlay-btn" onclick="event.stopPropagation();openUpdateLightbox(${p.posId},${u.uid})">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-                Expand
-              </button>
-              <button class="chart-overlay-btn danger" onclick="event.stopPropagation();removeUpdateChart(${p.posId},${u.uid})">Remove</button>
-            </div>
-          </div>` : `
-          <div class="chart-upload-area" onclick="triggerUpdateChartUpload(${p.posId},${u.uid})" style="margin-top:8px">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            Add chart screenshot · or paste ⌘V
-          </div>`}
-          <input type="file" id="update-chart-input-${p.posId}-${u.uid}" accept="image/*" style="display:none"
+          ${(() => {
+            const imgs = updateImgs(u);
+            const tiles = imgs.map((src, i) => `
+            <div class="chart-preview-wrap" onclick="openUpdateLightbox(${p.posId},${u.uid},${i})" style="margin-top:8px">
+              <img src="${src}" alt="Update chart" />
+              <div class="chart-preview-overlay">
+                <button class="chart-overlay-btn" onclick="event.stopPropagation();openUpdateLightbox(${p.posId},${u.uid},${i})">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                  Expand
+                </button>
+                <button class="chart-overlay-btn danger" onclick="event.stopPropagation();removeUpdateChart(${p.posId},${u.uid},${i})">Remove</button>
+              </div>
+            </div>`).join('');
+            return tiles + `
+            <div class="chart-upload-area" onclick="triggerUpdateChartUpload(${p.posId},${u.uid})" style="margin-top:8px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              ${imgs.length ? 'Add another screenshot' : 'Add chart screenshot'} · or paste ⌘V
+            </div>`;
+          })()}
+          <input type="file" id="update-chart-input-${p.posId}-${u.uid}" accept="image/*" multiple style="display:none"
             onchange="handleUpdateChartUpload(${p.posId},${u.uid},this)" />
         </div>`;
       }).join('');
@@ -4387,7 +4429,7 @@ function addUpdate(posId) {
   pushUndo(`add update ${p.ticker}`);
   if (!p.updates) p.updates = [];
   const uid = Date.now();
-  p.updates.push({ uid, date: today(), text: '', chartImage: null });
+  p.updates.push({ uid, date: today(), text: '', images: [] });
   saveState();
   renderThesis(computeAll());
   setTimeout(() => {
@@ -4434,48 +4476,51 @@ function triggerUpdateChartUpload(posId, uid) {
 }
 
 function handleUpdateChartUpload(posId, uid, input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 1200;
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width  = Math.round(img.width  * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      const p = portfolio.find(p => p.posId === posId);
-      if (!p || !p.updates) return;
-      const u = p.updates.find(u => u.uid === uid);
-      if (!u) return;
-      u.chartImage = canvas.toDataURL('image/jpeg', 0.82);
-      saveState();
-      renderThesis(computeAll());
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+  const files = Array.from(input.files || []);
   input.value = '';
-}
-
-function removeUpdateChart(posId, uid) {
+  if (!files.length) return;
   const p = portfolio.find(p => p.posId === posId);
   if (!p || !p.updates) return;
   const u = p.updates.find(u => u.uid === uid);
   if (!u) return;
-  u.chartImage = null;
+  if (!Array.isArray(u.images)) u.images = u.chartImage ? [u.chartImage] : [];
+  delete u.chartImage;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        u.images.push(downscaleToDataUrl(img));
+        saveState();
+        renderThesis(computeAll());
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removeUpdateChart(posId, uid, idx) {
+  const p = portfolio.find(p => p.posId === posId);
+  if (!p || !p.updates) return;
+  const u = p.updates.find(u => u.uid === uid);
+  if (!u) return;
+  const imgs = updateImgs(u);
+  imgs.splice(idx, 1);
+  u.images = imgs;
+  delete u.chartImage;
   saveState();
   renderThesis(computeAll());
 }
 
-function openUpdateLightbox(posId, uid) {
+function openUpdateLightbox(posId, uid, idx) {
   const p = portfolio.find(p => p.posId === posId);
   if (!p || !p.updates) return;
   const u = p.updates.find(u => u.uid === uid);
-  if (!u || !u.chartImage) return;
-  document.getElementById('lightboxImg').src = u.chartImage;
+  if (!u) return;
+  const src = updateImgs(u)[idx || 0];
+  if (!src) return;
+  document.getElementById('lightboxImg').src = src;
   document.getElementById('lightbox').classList.add('open');
 }
 
@@ -4486,36 +4531,38 @@ function triggerChartUpload(ticker) {
 }
 
 function handleChartUpload(ticker, input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 1200;
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width  = Math.round(img.width  * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      chartImages[ticker] = canvas.toDataURL('image/jpeg', 0.82);
-      saveState();
-      renderThesis(computeAll());
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+  const files = Array.from(input.files || []);
   input.value = '';
+  if (!files.length) return;
+  if (!Array.isArray(chartImages[ticker])) chartImages[ticker] = chartImages[ticker] ? [chartImages[ticker]] : [];
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        chartImages[ticker].push(downscaleToDataUrl(img));
+        saveState();
+        renderThesis(computeAll());
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
-function removeChartImage(ticker) {
-  delete chartImages[ticker];
+function removeChartImage(ticker, idx) {
+  const imgs = thesisImgs(ticker);
+  imgs.splice(idx, 1);
+  if (imgs.length) chartImages[ticker] = imgs;
+  else delete chartImages[ticker];
   saveState();
   renderThesis(computeAll());
 }
 
-function showLightbox(ticker) {
-  document.getElementById('lightboxImg').src = chartImages[ticker];
+function showLightbox(ticker, idx) {
+  const src = thesisImgs(ticker)[idx || 0];
+  if (!src) return;
+  document.getElementById('lightboxImg').src = src;
   document.getElementById('lightbox').classList.add('open');
 }
 
@@ -4558,7 +4605,9 @@ document.addEventListener('paste', e => {
       if (!p) return;
       const u = (p.updates || []).find(u => u.uid === uid);
       if (!u) return;
-      u.chartImage = dataUrl;
+      if (!Array.isArray(u.images)) u.images = u.chartImage ? [u.chartImage] : [];
+      delete u.chartImage;
+      u.images.push(dataUrl);
       saveState();
       renderThesis(computeAll());
     });
@@ -4572,7 +4621,8 @@ document.addEventListener('paste', e => {
   if (!ticker) return;
   e.preventDefault();
   processClipboardImage(imgItem, dataUrl => {
-    chartImages[ticker] = dataUrl;
+    if (!Array.isArray(chartImages[ticker])) chartImages[ticker] = chartImages[ticker] ? [chartImages[ticker]] : [];
+    chartImages[ticker].push(dataUrl);
     saveState();
     renderThesis(computeAll());
   });
