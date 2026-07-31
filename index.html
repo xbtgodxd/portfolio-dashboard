@@ -957,9 +957,9 @@ tr:hover .trash-btn { opacity: 1; }
 
 /* ── PRIVATE TAB ── */
 .private-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.private-table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 12px 10px; border-bottom: 1px solid var(--border1); }
+.private-table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 12px 10px; border-bottom: 1px solid var(--border); }
 .private-table th.right { text-align: right; }
-.private-table td { padding: 12px; border-bottom: 1px solid var(--border1); vertical-align: middle; color: var(--text); }
+.private-table td { padding: 12px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
 .private-table td.right { text-align: right; font-family: var(--mono); }
 .private-table tr:last-child td { border-bottom: none; }
 .private-table tr:hover td { background: var(--bg3); }
@@ -1009,7 +1009,7 @@ tr:hover .trash-btn { opacity: 1; }
   display: flex;
   gap: 0;
   margin-bottom: 28px;
-  border-bottom: 1px solid var(--border1);
+  border-bottom: 1px solid var(--border);
 }
 .tab-btn {
   background: none;
@@ -2077,6 +2077,7 @@ let btcPriceCache = {}; // 'YYYY-MM-01' -> price
 let airdrops = [];
 let nextAirdropId = 1;
 let expandedAirdrops = new Set(); // ids currently expanded
+let airdropCalcOpen = new Set(); // ids whose Leaderboard Snapshots <details> is open (survives re-render)
 let airdropExpandTab = {}; // id -> 'wallets'|'tasks'|'calc'|'notes'
 let _editingAirdropId = null;
 
@@ -2481,11 +2482,13 @@ function showUndoToast(msg) {
 
 document.addEventListener('keydown', e => {
   if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
-  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+  // e.key is uppercase 'Z' when Shift is held — normalize so ⌘⇧Z (redo) matches.
+  const isZ = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z';
+  if (isZ && !e.shiftKey) {
     e.preventDefault();
     undoLast();
   }
-  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+  if (isZ && e.shiftKey) {
     e.preventDefault();
     redoLast();
   }
@@ -3173,6 +3176,9 @@ function submitClosePosition() {
     tradeLog:   [...(p.tradeLog || []), { date: today(), side: 'sell', units: p.units, price: closePriceVal, pnlUSD: pnlOnRemaining }],
   });
 
+  // Unlink any cash tied to this perp — otherwise the chip keeps a dead linkedPerpId,
+  // stops showing live equity, and silently reverts to its stale manual amount.
+  cashPositions.forEach(c => { if (c.linkedPerpId === _closingPosId) c.linkedPerpId = null; });
   portfolio = portfolio.filter(p => p.posId !== _closingPosId);
   hideCloseModal();
   saveState();
@@ -5048,7 +5054,7 @@ function renderPrivateSplitChart() {
   document.getElementById('privateSplitLegend').innerHTML = `
     <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(0,212,255,0.85);display:inline-block"></span><span style="color:var(--text2)">Company</span><span style="font-family:var(--mono);color:var(--cyan);margin-left:4px">${companyPct}%</span></div>
     <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(139,92,246,0.85);display:inline-block"></span><span style="color:var(--text2)">Private</span><span style="font-family:var(--mono);color:#8b5cf6;margin-left:4px">${privatePct}%</span></div>
-    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border1);font-family:var(--mono);font-size:11px;color:var(--text3)">${fmtUsd(combined)} total</div>
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text3)">${fmtUsd(combined)} total</div>
   `;
 }
 
@@ -5467,6 +5473,12 @@ function taskProgressHtml(tasks) {
 }
 
 function renderAirdropTable() {
+  // Don't rebuild the table out from under an active edit (e.g. the 60s background price
+  // refresh calling renderAll): it would drop the caret/half-typed value and collapse the
+  // Snapshots panel. Checkboxes are exempt — toggling a task should still re-render.
+  const active = document.activeElement;
+  if (active && active.closest && active.closest('#tab-airdrops') &&
+      (active.tagName === 'TEXTAREA' || (active.tagName === 'INPUT' && active.type !== 'checkbox'))) return;
   const tbody = document.getElementById('airdropTableBody');
   if (!airdrops.length) {
     tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:40px 0;font-size:13px">No airdrops tracked yet — click <b style="color:var(--cyan)">Add Airdrop</b> to get started</td></tr>`;
@@ -5621,7 +5633,7 @@ function renderCalcTab(a) {
         Enter known leaderboard snapshots (rank + points) from the protocol's leaderboard. The calculator uses piecewise interpolation between your snapshots to estimate total points in the system, then computes your share.
       </div>
 
-      <details style="margin-bottom:20px">
+      <details style="margin-bottom:20px" ${airdropCalcOpen.has(a.id) ? 'open' : ''} ontoggle="this.open ? airdropCalcOpen.add(${a.id}) : airdropCalcOpen.delete(${a.id})">
         <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;padding:4px 0;margin-bottom:6px;user-select:none">
           <svg class="wallet-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform 0.2s"><polyline points="6 9 12 15 18 9"/></svg>
           Leaderboard Snapshots${dps.length ? ` (${dps.length})` : ''}
@@ -5693,6 +5705,7 @@ function setAirdropSubTab(id, tab) {
 function toggleTask(airdropId, taskIdx, checked) {
   const a = airdrops.find(x => x.id === airdropId);
   if (!a || !a.tasks[taskIdx]) return;
+  pushUndo(`task ${a.name}`);
   a.tasks[taskIdx].done = checked;
   saveState();
   renderAirdropTab();
@@ -5717,6 +5730,7 @@ function saveCalcField(airdropId, field, val) {
 function addLbDataPoint(airdropId) {
   const a = airdrops.find(x => x.id === airdropId);
   if (!a) return;
+  pushUndo(`add snapshot ${a.name}`);
   if (!a.leaderboard) a.leaderboard = {};
   if (!a.leaderboard.dataPoints) a.leaderboard.dataPoints = [];
   a.leaderboard.dataPoints.push({ rank: null, points: null });
@@ -5727,6 +5741,7 @@ function addLbDataPoint(airdropId) {
 function removeLbDataPoint(airdropId, idx) {
   const a = airdrops.find(x => x.id === airdropId);
   if (!a || !a.leaderboard?.dataPoints) return;
+  pushUndo(`remove snapshot ${a.name}`);
   a.leaderboard.dataPoints.splice(idx, 1);
   saveState();
   renderAirdropTable();
@@ -5736,7 +5751,10 @@ function updateLbDataPoint(airdropId, idx, field, val) {
   const a = airdrops.find(x => x.id === airdropId);
   if (!a || !a.leaderboard?.dataPoints?.[idx]) return;
   const num = parseFloat(val);
-  a.leaderboard.dataPoints[idx][field] = isNaN(num) ? null : num;
+  const newVal = isNaN(num) ? null : num;
+  if (a.leaderboard.dataPoints[idx][field] === newVal) return; // no-op edit, don't snapshot
+  pushUndo(`edit snapshot ${a.name}`);
+  a.leaderboard.dataPoints[idx][field] = newVal;
   if (field === 'rank') {
     a.leaderboard.dataPoints.sort((x, y) => {
       if (x.rank == null) return 1;
@@ -5759,6 +5777,7 @@ function updateLbDataPoint(airdropId, idx, field, val) {
 function runAllocationCalc(airdropId) {
   const a = airdrops.find(x => x.id === airdropId);
   if (!a) return;
+  pushUndo(`calculate ${a.name}`);
   if (!a.leaderboard) a.leaderboard = {};
   const lb = a.leaderboard;
   const myPoints = lb.myPoints;
