@@ -2272,6 +2272,7 @@ function loadState() {
     cashPositions = [...DEFAULT_CASH];
   }
   closedTrades = saved.closedTrades || [];
+  recomputeClosedPnlPct(); // repair any closed trade whose % was stored with the old inflated formula
   historyModified = saved.historyModified || false;
   historyData = (historyModified && saved.historyData && saved.historyData.length)
     ? saved.historyData
@@ -3153,7 +3154,12 @@ function submitClosePosition() {
   const pnlOnRemaining = dirSign(p) * p.units * (closePriceVal - p.entryPrice) * rate;
   const totalPnl       = pnlOnRemaining + (p.realizedPnl || 0);
   const entryNotional  = p.units * p.entryPrice * rate;
-  const pnlPct         = entryNotional > 0 ? (totalPnl / entryNotional * 100) : 0;
+  const closedLog      = [...(p.tradeLog || []), { date: today(), side: 'sell', units: p.units, price: closePriceVal, pnlUSD: pnlOnRemaining }];
+  // % is return-on-cost across the whole position (avg exit vs entry), not just the units
+  // left at close — otherwise realized P&L from earlier TPs inflates it. Fallback for the
+  // no-log edge case keeps the old single-close behaviour.
+  const pctFromLog     = closedPnlPct(p.entryPrice, p.leveraged ? (p.direction || 'long') : null, closedLog);
+  const pnlPct         = pctFromLog != null ? pctFromLog : (entryNotional > 0 ? (totalPnl / entryNotional * 100) : 0);
 
   closedTrades.unshift({
     posId:      p.posId,
@@ -3173,7 +3179,7 @@ function submitClosePosition() {
     closedDate: today(),
     outcome:    document.getElementById('closeOutcome').value.trim() || null,
     thesis:     (p.thesis || '').trim() || null,
-    tradeLog:   [...(p.tradeLog || []), { date: today(), side: 'sell', units: p.units, price: closePriceVal, pnlUSD: pnlOnRemaining }],
+    tradeLog:   closedLog,
   });
 
   // Unlink any cash tied to this perp — otherwise the chip keeps a dead linkedPerpId,
@@ -3297,11 +3303,12 @@ function renderClosedTrades() {
           </td>
           <td class="closed-outcome" style="text-align:left" onclick="this.classList.toggle('expanded')" title="Click to expand">${escHtml(t.outcome || '—')}${t.thesis ? `<div class="closed-thesis">Thesis at close: “${escHtml(t.thesis)}”</div>` : ''}</td>
           <td>${fmtNative(t.entryPrice, t.currency)}</td>
-          <td>${fmtNative(t.closePrice, t.currency)}${(() => {
+          <td>${(() => {
             const sells = (t.tradeLog || []).filter(e => e.side === 'sell');
-            if (sells.length < 2) return '';
-            const { avgExit } = tradeLogAverages(t.tradeLog);
-            return `<br><span style="font-size:10px;color:var(--text3)" title="Weighted average across all ${sells.length} sells, including partial TPs">avg ${fmtNative(avgExit, t.currency)}</span>`;
+            const { avgExit } = tradeLogAverages(t.tradeLog || []);
+            const exit = avgExit != null ? avgExit : t.closePrice;
+            const isAvg = sells.length >= 2;
+            return `${fmtNative(exit, t.currency)}${isAvg ? ` <span style="font-size:9px;color:var(--text3)" title="Weighted average exit across ${sells.length} sells, incl. partial TPs. Final close was ${fmtNative(t.closePrice, t.currency)}.">avg</span>` : ''}`;
           })()}</td>
           <td><span class="closed-pnl ${t.pnlPct >= 0 ? 'pos' : 'neg'}">${t.pnlPct >= 0 ? '+' : ''}${t.pnlPct.toFixed(1)}%</span></td>
           <td><span class="closed-pnl ${t.totalPnlUsd >= 0 ? 'pos' : 'neg'}">${fmtUsd(t.totalPnlUsd)}</span></td>
@@ -3471,6 +3478,26 @@ function tradeLogAverages(log) {
   const buys  = log.filter(e => e.side === 'buy');
   return { avgExit: avg(sells), soldUnits: sells.reduce((s, e) => s + e.units, 0),
            avgBuy: avg(buys),  boughtUnits: buys.reduce((s, e) => s + e.units, 0) };
+}
+
+// Return-on-cost % for a closed trade = weighted avg exit vs avg entry, direction-aware.
+// Blends partial TPs (a single close is just that one price). This is why it can't be
+// (totalPnl / remaining-units cost): realized P&L came from the whole position, so dividing
+// it by only the units left at close over-states the % (the old 240%-on-a-2x bug).
+function closedPnlPct(entryPrice, direction, tradeLog) {
+  const avgExit = tradeLogAverages(tradeLog || []).avgExit;
+  if (avgExit == null || !(entryPrice > 0)) return null;
+  const dir = direction === 'short' ? -1 : 1;
+  return dir * (avgExit - entryPrice) / entryPrice * 100;
+}
+
+// Fix pnlPct on any already-stored closed trade that has a trade log (idempotent).
+function recomputeClosedPnlPct() {
+  closedTrades.forEach(t => {
+    if (!Array.isArray(t.tradeLog) || !t.tradeLog.length) return;
+    const pct = closedPnlPct(t.entryPrice, t.direction, t.tradeLog);
+    if (pct != null) t.pnlPct = pct;
+  });
 }
 
 function renderRealizedLog(p) {
