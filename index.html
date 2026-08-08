@@ -151,6 +151,7 @@ body {
 .undo-btn { background:var(--bg4); border:1px solid var(--border2); color:var(--text3); padding:6px 14px; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer; font-family:var(--sans); transition:all 0.15s; display:flex; align-items:center; gap:6px; }
 .undo-btn:hover:not(:disabled) { border-color:var(--purple); color:var(--purple); }
 .undo-btn:disabled { opacity:0.35; cursor:default; }
+.undo-btn.active { border-color:var(--cyan); color:var(--cyan); background:var(--cyand); }
 .undo-toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background:var(--bg4); border:1px solid var(--border2); color:var(--text2); padding:8px 18px; border-radius:8px; font-size:12px; pointer-events:none; opacity:0; transition:opacity 0.2s; z-index:9999; white-space:nowrap; }
 
 /* ── MAIN ── */
@@ -1126,6 +1127,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <button class="undo-btn" onclick="document.getElementById('importFileInput').click()" title="Restore the dashboard from a backup file">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       Restore
+    </button>
+    <button class="undo-btn" id="cloudSyncBtn" onclick="cloudSyncButtonClick()" style="display:none" title="Sync this dashboard to a file in your own cloud folder">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+      <span id="cloudSyncLabel">Cloud Sync</span>
     </button>
     <input type="file" id="importFileInput" accept=".json,application/json" style="display:none" onchange="importBackup(this)" />
     <button class="private-toggle-btn" id="privateToggleBtn" onclick="togglePrivateTab()" title="Show/hide the Private tab">
@@ -2300,12 +2305,16 @@ function loadState() {
 }
 
 function saveState() {
+  // Build once so localStorage and the cloud-sync file get a byte-identical blob (same
+  // `syncedAt`) — otherwise the file always looks "newer" and triggers a needless re-adopt.
+  const json = buildStateJson();
   try {
-    localStorage.setItem('portfolio-dashboard-template', buildStateJson());
+    localStorage.setItem('portfolio-dashboard-template', json);
   } catch (e) {
     console.error('saveState failed:', e);
     showUndoToast('⚠ Could not save — browser storage is full. Download a Backup, then remove some chart screenshots.');
   }
+  cloudSyncWrite(json);
 }
 
 function buildStateJson() {
@@ -2339,7 +2348,8 @@ function buildStateJson() {
     privateAssets, privateCash,
     nextPrivateAssetId, nextPrivateCashId,
     airdrops, nextAirdropId,
-    activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode
+    activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode,
+    syncedAt: Date.now() // last-write-wins marker for cloud sync (see CLOUD SYNC section)
   });
 }
 
@@ -2389,6 +2399,179 @@ function importBackup(input) {
     location.reload();
   };
   reader.readAsText(file);
+}
+
+// ── CLOUD SYNC (private: binds to a JSON file in the user's own cloud folder) ──────
+// Uses the File System Access API to auto-write state to one file the user picks (in
+// iCloud/OneDrive/Dropbox). Data never touches a third-party server. Last-write-wins by
+// the `syncedAt` marker. Everything here is feature-detected — on a browser without the
+// API (or in the Node test harness) it's a complete no-op and the button stays hidden.
+const SYNC_KEY = 'portfolio-dashboard-template';
+let cloudSyncHandle = null;
+let cloudSyncState = 'off'; // 'off' | 'connected' | 'reconnect' | 'unsupported'
+let _cloudWriteTimer = null;
+
+const cloudSupported = () => typeof window !== 'undefined' && !!window.showSaveFilePicker && !!window.indexedDB;
+
+// Pure last-write-wins decision — extracted so it's unit-testable without the file APIs.
+function shouldAdoptRemote(localSyncedAt, remoteSyncedAt) {
+  return (remoteSyncedAt || 0) > (localSyncedAt || 0);
+}
+
+// Tiny IndexedDB key-value store (localStorage can't hold a FileSystemFileHandle).
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('pdash-sync', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+function idbReq(mode, fn) {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const store = db.transaction('kv', mode).objectStore('kv');
+    const req = fn(store);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  }));
+}
+const idbGet = key => idbReq('readonly',  s => s.get(key));
+const idbSet = (key, val) => idbReq('readwrite', s => s.put(val, key));
+const idbDel = key => idbReq('readwrite', s => s.delete(key));
+
+async function verifyPermission(handle, write) {
+  const opts = { mode: write ? 'readwrite' : 'read' };
+  if ((await handle.queryPermission(opts)) === 'granted') return true;
+  if ((await handle.requestPermission(opts)) === 'granted') return true; // needs a user gesture
+  return false;
+}
+
+async function cloudReadFile() {
+  const file = await cloudSyncHandle.getFile();
+  const text = await file.text();
+  if (!text.trim()) return null;
+  const data = JSON.parse(text);
+  return (data && Array.isArray(data.portfolio)) ? data : null;
+}
+
+// Debounced write of the exact JSON already saved to localStorage.
+function cloudSyncWrite(json) {
+  if (cloudSyncState !== 'connected' || !cloudSyncHandle) return;
+  clearTimeout(_cloudWriteTimer);
+  _cloudWriteTimer = setTimeout(async () => {
+    try {
+      const w = await cloudSyncHandle.createWritable();
+      await w.write(json);
+      await w.close();
+    } catch (e) { console.warn('cloud sync write failed:', e); }
+  }, 1200);
+}
+
+// On open (or reconnect): if the file is newer than local, adopt it and reload.
+async function cloudMaybeAdoptRemote() {
+  try {
+    const remote = await cloudReadFile();
+    if (!remote) return;
+    const localSyncedAt = (JSON.parse(localStorage.getItem(SYNC_KEY) || '{}')).syncedAt || 0;
+    if (shouldAdoptRemote(localSyncedAt, remote.syncedAt)) {
+      localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
+      showUndoToast('Loaded newer data from your cloud sync ✓');
+      setTimeout(() => location.reload(), 700);
+    }
+  } catch (e) { console.warn('cloud sync read failed:', e); }
+}
+
+async function initCloudSync() {
+  if (!cloudSupported()) { cloudSyncState = 'unsupported'; updateCloudSyncBtn(); return; }
+  let handle = null;
+  try { handle = await idbGet('syncHandle'); } catch (_) {}
+  if (!handle) { cloudSyncState = 'off'; updateCloudSyncBtn(); return; }
+  cloudSyncHandle = handle;
+  let perm = 'prompt';
+  try { perm = await handle.queryPermission({ mode: 'readwrite' }); } catch (_) {}
+  if (perm === 'granted') {
+    cloudSyncState = 'connected';
+    updateCloudSyncBtn();
+    await cloudMaybeAdoptRemote();
+  } else {
+    // Chromium drops read-write grants across sessions — needs one click to re-authorize.
+    cloudSyncState = 'reconnect';
+    updateCloudSyncBtn();
+  }
+}
+
+async function connectCloudSync() {
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: 'portfolio-dashboard-sync.json',
+      types: [{ description: 'Dashboard sync file', accept: { 'application/json': ['.json'] } }],
+    });
+    if (!(await verifyPermission(handle, true))) return;
+    cloudSyncHandle = handle;
+    let remote = null;
+    try { remote = await cloudReadFile(); } catch (_) {}
+    if (remote && remote.portfolio.length) {
+      // Connecting an additional device to an existing file — offer to load it.
+      const when = remote.syncedAt ? new Date(remote.syncedAt).toLocaleString() : 'an earlier time';
+      if (confirm(`This sync file already has data (saved ${when}).\n\nOK — load it onto THIS device (replaces what's here).\nCancel — keep this device's data and overwrite the file.`)) {
+        localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
+        await idbSet('syncHandle', handle);
+        showUndoToast('Cloud sync connected — loading synced data ✓');
+        setTimeout(() => location.reload(), 700);
+        return;
+      }
+    }
+    // First device, or user chose to keep local: push local into the file.
+    const json = buildStateJson();
+    localStorage.setItem(SYNC_KEY, json);
+    const w = await handle.createWritable();
+    await w.write(json);
+    await w.close();
+    await idbSet('syncHandle', handle);
+    cloudSyncState = 'connected';
+    updateCloudSyncBtn();
+    showUndoToast('Cloud sync connected ✓ — changes now auto-save to your file');
+  } catch (e) {
+    if (e.name !== 'AbortError') console.warn('cloud sync connect failed:', e);
+  }
+}
+
+async function reconnectCloudSync() {
+  if (!cloudSyncHandle) { cloudSyncState = 'off'; updateCloudSyncBtn(); return; }
+  if (!(await verifyPermission(cloudSyncHandle, true))) return;
+  cloudSyncState = 'connected';
+  updateCloudSyncBtn();
+  await cloudMaybeAdoptRemote();
+  if (cloudSyncState === 'connected') showUndoToast('Cloud sync reconnected ✓');
+}
+
+async function disconnectCloudSync() {
+  if (!confirm('Turn off cloud sync on this device?\n\nYour data stays in the file and in this browser — changes just stop auto-saving to the file.')) return;
+  cloudSyncHandle = null;
+  cloudSyncState = 'off';
+  try { await idbDel('syncHandle'); } catch (_) {}
+  updateCloudSyncBtn();
+  showUndoToast('Cloud sync turned off on this device');
+}
+
+function cloudSyncButtonClick() {
+  if (cloudSyncState === 'off') connectCloudSync();
+  else if (cloudSyncState === 'reconnect') reconnectCloudSync();
+  else if (cloudSyncState === 'connected') disconnectCloudSync();
+}
+
+function updateCloudSyncBtn() {
+  const btn = document.getElementById('cloudSyncBtn');
+  if (!btn) return;
+  if (cloudSyncState === 'unsupported') { btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  const label = document.getElementById('cloudSyncLabel');
+  const labels = { off: 'Cloud Sync', connected: 'Synced ✓', reconnect: 'Reconnect Sync' };
+  if (label) label.textContent = labels[cloudSyncState] || 'Cloud Sync';
+  btn.classList.toggle('active', cloudSyncState === 'connected');
+  btn.title = cloudSyncState === 'connected' ? 'Auto-syncing to your cloud file — click to turn off on this device'
+    : cloudSyncState === 'reconnect' ? 'Click to re-grant file access and resume syncing'
+    : 'Sync this dashboard to a file in your own cloud folder (iCloud / OneDrive / Dropbox)';
 }
 
 // ── UNDO ─────────────────────────────────────────────────────────────────────
@@ -6033,6 +6216,7 @@ if (activeTab !== 'portfolio') switchTab(activeTab);
 updateClock();
 setInterval(updateClock, 1000);
 setInterval(fetchPrices, 60000);
+initCloudSync(); // restores a previously-connected cloud-sync file (no-op if unsupported/none)
 </script>
 </body>
 </html>
