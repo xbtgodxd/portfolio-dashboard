@@ -2423,8 +2423,13 @@ function importBackup(input) {
 // API (or in the Node test harness) it's a complete no-op and the button stays hidden.
 const SYNC_KEY = 'portfolio-dashboard-template';
 let cloudSyncHandle = null;
-let cloudSyncState = 'off'; // 'off' | 'connected' | 'reconnect' | 'unsupported'
+let cloudSyncState = 'off'; // 'off' | 'connected' | 'reconnect' | 'error' | 'unsupported'
 let _cloudWriteTimer = null;
+// Write gate. Stays false until we have positively established what the sync file holds
+// (adopted it, or read it and confirmed ours is newer). Writing before that is how a
+// second device silently clobbers the first: the file may simply not be downloaded yet,
+// and an empty/failed read must never be mistaken for "the file is stale, overwrite it".
+let cloudSyncReady = false;
 
 const cloudSupported = () => typeof window !== 'undefined' && !!window.showSaveFilePicker && !!window.indexedDB;
 
@@ -2471,29 +2476,62 @@ async function cloudReadFile() {
 
 // Debounced write of the exact JSON already saved to localStorage.
 function cloudSyncWrite(json) {
-  if (cloudSyncState !== 'connected' || !cloudSyncHandle) return;
+  if (cloudSyncState !== 'connected' || !cloudSyncHandle || !cloudSyncReady) return;
   clearTimeout(_cloudWriteTimer);
   _cloudWriteTimer = setTimeout(async () => {
     try {
       const w = await cloudSyncHandle.createWritable();
       await w.write(json);
       await w.close();
-    } catch (e) { console.warn('cloud sync write failed:', e); }
+    } catch (e) {
+      // A silent failure here used to leave the button reading "Synced ✓" while nothing
+      // was being written — the badge has to tell the truth.
+      console.warn('cloud sync write failed:', e);
+      cloudSyncReady = false;
+      cloudSyncState = 'error';
+      updateCloudSyncBtn();
+      showUndoToast('⚠ Could not write to your sync file — click Sync Error to reconnect');
+    }
   }, 1200);
 }
 
-// On open (or reconnect): if the file is newer than local, adopt it and reload.
+// On open, reconnect, or refocus: read the file and decide what to do. Returns
+// 'adopted' | 'local-newer' | 'unreadable'. Only the first two mean we actually know what
+// the file holds, and only then is writing unlocked. An unreadable file is NOT permission
+// to overwrite it: a Dropbox/iCloud placeholder that has not finished downloading reads as
+// empty, and treating that as "the file is stale" is exactly how one device wipes another.
 async function cloudMaybeAdoptRemote() {
+  let remote;
   try {
-    const remote = await cloudReadFile();
-    if (!remote) return;
-    const localSyncedAt = (JSON.parse(localStorage.getItem(SYNC_KEY) || '{}')).syncedAt || 0;
-    if (shouldAdoptRemote(localSyncedAt, remote.syncedAt)) {
-      localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
-      showUndoToast('Loaded newer data from your cloud sync ✓');
-      setTimeout(() => location.reload(), 700);
-    }
-  } catch (e) { console.warn('cloud sync read failed:', e); }
+    remote = await cloudReadFile();
+  } catch (e) {
+    console.warn('cloud sync read failed:', e);
+    cloudSyncReady = false;
+    return 'unreadable';
+  }
+  if (!remote) { cloudSyncReady = false; return 'unreadable'; }
+  const localSyncedAt = (JSON.parse(localStorage.getItem(SYNC_KEY) || '{}')).syncedAt || 0;
+  if (shouldAdoptRemote(localSyncedAt, remote.syncedAt)) {
+    cloudSyncReady = false; // hold writes; the reloaded page re-establishes them from scratch
+    localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
+    showUndoToast('Loaded newer data from your cloud sync ✓');
+    setTimeout(() => location.reload(), 700);
+    return 'adopted';
+  }
+  cloudSyncReady = true; // read succeeded and ours is newer — safe to write
+  return 'local-newer';
+}
+
+// Shared tail for the three entry points that re-check the file. Flips the button to the
+// honest 'error' state when the file could not be read, instead of showing "Synced ✓".
+async function cloudRecheck(quiet) {
+  const outcome = await cloudMaybeAdoptRemote();
+  if (outcome === 'unreadable') {
+    cloudSyncState = 'error';
+    updateCloudSyncBtn();
+    if (!quiet) showUndoToast('⚠ Sync file could not be read — still downloading? Click Sync Error to retry');
+  }
+  return outcome;
 }
 
 async function initCloudSync() {
@@ -2507,7 +2545,7 @@ async function initCloudSync() {
   if (perm === 'granted') {
     cloudSyncState = 'connected';
     updateCloudSyncBtn();
-    await cloudMaybeAdoptRemote();
+    await cloudRecheck(false);
   } else {
     // Chromium drops read-write grants across sessions — needs one click to re-authorize.
     cloudSyncState = 'reconnect';
@@ -2529,6 +2567,7 @@ async function connectCloudSync() {
       // Connecting an additional device to an existing file — offer to load it.
       const when = remote.syncedAt ? new Date(remote.syncedAt).toLocaleString() : 'an earlier time';
       if (confirm(`This sync file already has data (saved ${when}).\n\nOK — load it onto THIS device (replaces what's here).\nCancel — keep this device's data and overwrite the file.`)) {
+        cloudSyncReady = false;
         localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
         await idbSet('syncHandle', handle);
         showUndoToast('Cloud sync connected — loading synced data ✓');
@@ -2543,6 +2582,7 @@ async function connectCloudSync() {
     await w.write(json);
     await w.close();
     await idbSet('syncHandle', handle);
+    cloudSyncReady = true; // we just wrote it ourselves, so we know exactly what it holds
     cloudSyncState = 'connected';
     updateCloudSyncBtn();
     showUndoToast('Cloud sync connected ✓ — changes now auto-save to your file');
@@ -2556,7 +2596,7 @@ async function reconnectCloudSync() {
   if (!(await verifyPermission(cloudSyncHandle, true))) return;
   cloudSyncState = 'connected';
   updateCloudSyncBtn();
-  await cloudMaybeAdoptRemote();
+  await cloudRecheck(false);
   if (cloudSyncState === 'connected') showUndoToast('Cloud sync reconnected ✓');
 }
 
@@ -2564,6 +2604,7 @@ async function disconnectCloudSync() {
   if (!confirm('Turn off cloud sync on this device?\n\nYour data stays in the file and in this browser — changes just stop auto-saving to the file.')) return;
   cloudSyncHandle = null;
   cloudSyncState = 'off';
+  cloudSyncReady = false;
   try { await idbDel('syncHandle'); } catch (_) {}
   updateCloudSyncBtn();
   showUndoToast('Cloud sync turned off on this device');
@@ -2571,7 +2612,7 @@ async function disconnectCloudSync() {
 
 function cloudSyncButtonClick() {
   if (cloudSyncState === 'off') connectCloudSync();
-  else if (cloudSyncState === 'reconnect') reconnectCloudSync();
+  else if (cloudSyncState === 'reconnect' || cloudSyncState === 'error') reconnectCloudSync();
   else if (cloudSyncState === 'connected') disconnectCloudSync();
 }
 
@@ -2581,11 +2622,12 @@ function updateCloudSyncBtn() {
   if (cloudSyncState === 'unsupported') { btn.style.display = 'none'; return; }
   btn.style.display = '';
   const label = document.getElementById('cloudSyncLabel');
-  const labels = { off: 'Cloud Sync', connected: 'Synced ✓', reconnect: 'Reconnect Sync' };
+  const labels = { off: 'Cloud Sync', connected: 'Synced ✓', reconnect: 'Reconnect Sync', error: 'Sync Error' };
   if (label) label.textContent = labels[cloudSyncState] || 'Cloud Sync';
   btn.classList.toggle('active', cloudSyncState === 'connected');
   btn.title = cloudSyncState === 'connected' ? 'Auto-syncing to your cloud file — click to turn off on this device'
     : cloudSyncState === 'reconnect' ? 'Click to re-grant file access and resume syncing'
+    : cloudSyncState === 'error' ? 'Your sync file could not be read or written — nothing is being saved to it. Click to retry.'
     : 'Sync this dashboard to a file in your own cloud folder (iCloud / OneDrive / Dropbox)';
 }
 
@@ -6232,6 +6274,14 @@ updateClock();
 setInterval(updateClock, 1000);
 setInterval(fetchPrices, 60000);
 initCloudSync(); // restores a previously-connected cloud-sync file (no-op if unsupported/none)
+
+// A tab left open on one machine goes stale as soon as the other machine writes. Re-check
+// the file when the tab comes back to the front, so a stale tab adopts the newer data
+// instead of quietly overwriting it with whatever was on screen an hour ago. Quiet mode:
+// a backgrounded tab failing a read is not worth a toast.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && cloudSyncState === 'connected') cloudRecheck(true);
+});
 </script>
 </body>
 </html>
