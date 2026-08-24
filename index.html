@@ -349,6 +349,14 @@ tr:hover td { background: var(--bg3); }
 .closed-stat-val.red { color: var(--red); }
 .closed-thesis { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border2); color: var(--text3); font-style: italic; font-size: 11px; line-height: 1.5; white-space: normal; }
 .closed-outcome.expanded .closed-thesis { display: block; }
+.closed-pager { display: flex; align-items: center; justify-content: center; gap: 14px;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.closed-page-btn { background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
+  font-family: var(--sans); font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 6px;
+  cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+.closed-page-btn:hover:not(:disabled) { background: var(--bg4); border-color: var(--border2); color: var(--text); }
+.closed-page-btn:disabled { opacity: 0.35; cursor: default; }
+.closed-page-info { font-size: 11px; color: var(--text3); font-family: var(--mono); }
 .closed-stat-label { font-size: 10px; color: var(--text3); text-transform: uppercase;
   letter-spacing: 0.06em; margin-bottom: 3px; }
 .closed-stat-val { font-family: var(--mono); font-size: 16px; font-weight: 600; }
@@ -2070,6 +2078,10 @@ let activeTab = 'portfolio';
 let portfolio = [];
 let cashPositions = [];
 let closedTrades = [];
+// View-only paging for the Closed Trades table. Deliberately NOT in saveState() or
+// snapState() — it is where you are looking, not data. Stats/CSV always use the full array.
+const CLOSED_TRADES_PAGE_SIZE = 25;
+let closedTradesPage = 1;
 const today = () => new Date().toISOString().slice(0, 10);
 let nextCashId = 100;
 let nextPosId = 1;
@@ -3401,6 +3413,7 @@ function submitClosePosition() {
   const pctFromLog     = closedPnlPct(p.entryPrice, p.leveraged ? (p.direction || 'long') : null, closedLog);
   const pnlPct         = pctFromLog != null ? pctFromLog : (entryNotional > 0 ? (totalPnl / entryNotional * 100) : 0);
 
+  closedTradesPage = 1;  // the new trade goes to the top of the list — show it
   closedTrades.unshift({
     posId:      p.posId,
     name:       p.name,
@@ -3462,7 +3475,7 @@ function exportClosedTradesCsv() {
 function renderClosedTrades() {
   const section = document.getElementById('closedTradesSection');
   const card    = document.getElementById('closedTradesCard');
-  if (!closedTrades.length) { card.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0">No closed trades yet.</div>'; return; }
+  if (!closedTrades.length) { closedTradesPage = 1; card.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0">No closed trades yet.</div>'; return; }
 
   const totalPnl  = closedTrades.reduce((s, t) => s + t.totalPnlUsd, 0);
   const wins      = closedTrades.filter(t => t.totalPnlUsd > 0);
@@ -3477,6 +3490,15 @@ function renderClosedTrades() {
   const worst     = closedTrades.reduce((a, b) => b.totalPnlUsd < a.totalPnlUsd ? b : a);
   const holds     = closedTrades.map(holdDays).filter(d => d != null);
   const avgHold   = holds.length ? Math.round(holds.reduce((a, b) => a + b, 0) / holds.length) : null;
+
+  // Paging is presentation only and starts BELOW the stats above: Total Realised, Win Rate,
+  // Profit Factor, Best/Worst and Avg Hold are career numbers over every closed trade, not
+  // the visible page. Same for exportClosedTradesCsv(). Clamp here so a delete that empties
+  // the last page falls back to a real one instead of rendering a blank table.
+  const pageCount  = Math.max(1, Math.ceil(closedTrades.length / CLOSED_TRADES_PAGE_SIZE));
+  closedTradesPage = Math.min(Math.max(1, closedTradesPage), pageCount);
+  const pageStart  = (closedTradesPage - 1) * CLOSED_TRADES_PAGE_SIZE;
+  const pageRows   = closedTrades.slice(pageStart, pageStart + CLOSED_TRADES_PAGE_SIZE);
 
   card.innerHTML = `
     <div class="closed-stats">
@@ -3518,6 +3540,7 @@ function renderClosedTrades() {
         <div class="closed-stat-val">${avgHold}d</div>
       </div>` : ''}
     </div>
+    <div class="table-scroll">
     <table class="closed-trades-table">
       <thead><tr>
         <th>Asset</th>
@@ -3530,7 +3553,7 @@ function renderClosedTrades() {
         <th></th>
       </tr></thead>
       <tbody>
-        ${closedTrades.map((t, i) => `
+        ${pageRows.map((t, i) => `
         <tr>
           <td>
             <div style="display:flex;align-items:center;gap:8px">
@@ -3553,10 +3576,25 @@ function renderClosedTrades() {
           <td><span class="closed-pnl ${t.pnlPct >= 0 ? 'pos' : 'neg'}">${t.pnlPct >= 0 ? '+' : ''}${t.pnlPct.toFixed(1)}%</span></td>
           <td><span class="closed-pnl ${t.totalPnlUsd >= 0 ? 'pos' : 'neg'}">${fmtUsd(t.totalPnlUsd)}</span></td>
           <td style="color:var(--text3);font-size:11px">${t.closedDate}${holdDays(t) != null ? `<br><span style="font-size:10px;font-family:var(--mono)">held ${holdDays(t)}d</span>` : ''}</td>
-          <td><button onclick="deleteClosedTrade(${i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">×</button></td>
+          <td><button onclick="deleteClosedTrade(${pageStart + i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">×</button></td>
         </tr>`).join('')}
       </tbody>
-    </table>`;
+    </table>
+    </div>
+    ${pageCount > 1 ? `
+    <div class="closed-pager">
+      <button class="closed-page-btn" onclick="setClosedTradesPage(${closedTradesPage - 1})" ${closedTradesPage === 1 ? 'disabled' : ''}>&larr; Prev</button>
+      <span class="closed-page-info">${pageStart + 1}&ndash;${pageStart + pageRows.length} of ${closedTrades.length}</span>
+      <button class="closed-page-btn" onclick="setClosedTradesPage(${closedTradesPage + 1})" ${closedTradesPage === pageCount ? 'disabled' : ''}>Next &rarr;</button>
+    </div>` : ''}`;
+}
+
+function setClosedTradesPage(n) {
+  const pageCount = Math.max(1, Math.ceil(closedTrades.length / CLOSED_TRADES_PAGE_SIZE));
+  closedTradesPage = Math.min(Math.max(1, n), pageCount);
+  renderClosedTrades();  // view-only: no saveState(), no pushUndo()
+  const card = document.getElementById('closedTradesCard');
+  if (card && card.scrollIntoView) card.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
 function deleteClosedTrade(index) {
@@ -4918,6 +4956,21 @@ function isoToEuropean(iso) {
   return `${d}/${m}/${y}`;
 }
 
+// Rebase a series so its first usable point sits at 0% — the spaghetti-chart form,
+// where every line starts together and vertical distance is relative performance.
+// Returns all-null when the baseline isn't a positive number: % change from zero, or
+// from a negative net worth, has no meaning and would draw a garbage line.
+function rebaseToPct(values) {
+  const usable = v => typeof v === 'number' && isFinite(v);
+  const base = values.find(usable);
+  if (!(base > 0)) return values.map(() => null);
+  return values.map(v => usable(v) ? (v / base - 1) * 100 : null);
+}
+
+function fmtPctSigned(v, dp) {
+  return (v > 0 ? '+' : '') + v.toFixed(dp) + '%';
+}
+
 async function fetchBtcHistoryPrices(dates) {
   const needed = dates.filter(d => !btcPriceCache[d]);
   if (!needed.length) return;
@@ -4929,19 +4982,16 @@ async function fetchBtcHistoryPrices(dates) {
     const data = await res.json();
     if (!Array.isArray(data) || !data.length) throw new Error('no data');
     // Each kline: [openTime, open, high, low, close, ...]
-    // openTime is the 1st of the month in ms — matches our history dates exactly
-    data.forEach(([openTime, , , , close]) => {
+    // openTime is the 1st of the month in ms and every history date is a 1st, so the
+    // OPEN is the price on that date. Storing `close` put the price from the *last* day
+    // of the month under the 1st's label, and for the current unfinished month "close"
+    // is simply the live price — which is why today's BTC number showed up on the 1st.
+    // The open also stops changing once the month starts, so caching it stays correct.
+    data.forEach(([openTime, open]) => {
       const d = new Date(openTime);
       const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-01`;
-      btcPriceCache[dateStr] = parseFloat(close);
+      btcPriceCache[dateStr] = parseFloat(open);
     });
-    // For the current open (incomplete) month, also use open price
-    const last = data[data.length - 1];
-    if (last) {
-      const d = new Date(last[0]);
-      const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-01`;
-      if (!btcPriceCache[dateStr]) btcPriceCache[dateStr] = parseFloat(last[1]);
-    }
   } catch(e) {
     console.error('BTC fetch failed:', e);
     btcCompareMode = false;
@@ -4997,17 +5047,27 @@ function renderHistorySection() {
   let datasets, yTickCb, tooltipLabelCb;
 
   if (btcCompareMode && sorted.length) {
-    const btcData = sorted.map(d => btcPriceCache[d.date] ?? null);
+    // Spaghetti mode: every line rebased to % change from the first snapshot on one
+    // shared axis, so vertical distance is real relative performance and "above the
+    // orange line" means you beat BTC. The old build drew dollars on a second right-hand
+    // axis, which Chart.js scaled independently — the two lines were not comparable at
+    // all. No dollar amounts appear in this mode, on the axis or in the tooltip.
+    const nwPct  = rebaseToPct(sorted.map(d => d.value));
+    const adjPct = rebaseToPct(adjustedData);
+    const btcPct = rebaseToPct(sorted.map(d => btcPriceCache[d.date] ?? null));
+    const pts = sorted.length > 36 ? 0 : 3;
     datasets = [
-      { label: 'Net Worth', data: sorted.map(d => d.value), fill: true, backgroundColor: gradient, borderColor: th.accent, borderWidth: 2, pointRadius: sorted.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent, tension: 0.3, yAxisID: 'y' },
-      ...(hasWithdrawals ? [{ label: 'Withdrawal-adjusted', data: adjustedData, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: sorted.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3, yAxisID: 'y' }] : []),
-      { label: 'BTC', data: btcData, fill: false, borderColor: '#f7931a', borderWidth: 2, pointRadius: sorted.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: '#f7931a', tension: 0.3, yAxisID: 'y2' }
+      { label: 'Net Worth', data: nwPct, fill: false, borderColor: th.accent, borderWidth: 2, pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: th.accent, tension: 0.3 },
+      ...(hasWithdrawals ? [{ label: 'Withdrawal-adjusted', data: adjPct, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3 }] : []),
+      { label: 'BTC', data: btcPct, fill: false, borderColor: '#f7931a', borderWidth: 2, pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: '#f7931a', tension: 0.3 }
     ];
-    yTickCb = v => privacyMode ? '•••' : (Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v);
+    // Percentages are deliberately not masked by privacyMode — same rule as everywhere
+    // else in the app: amounts are hidden, relative performance is not.
+    yTickCb = v => fmtPctSigned(v, 0);
     tooltipLabelCb = ctx => {
       const v = ctx.raw;
-      if (v === null) return `  ${ctx.dataset.label}: —`;
-      return `  ${ctx.dataset.label}: ${fmtUsd(v)}`;
+      if (typeof v !== 'number') return `  ${ctx.dataset.label}: —`;
+      return `  ${ctx.dataset.label}: ${fmtPctSigned(v, 1)}`;
     };
   } else {
     datasets = [
@@ -5059,16 +5119,14 @@ function renderHistorySection() {
           border: { color: th.grid }
         },
         y: {
-          grid: { color: th.grid },
+          grid: {
+            // In vs-BTC mode the 0% line is the one that matters (flat since day one),
+            // so draw it brighter than the rest of the grid.
+            color: c => (btcCompareMode && c.tick && c.tick.value === 0) ? th.divider : th.grid
+          },
           ticks: { color: th.muted, font: { family: 'JetBrains Mono', size: 11 }, callback: yTickCb },
           border: { color: th.grid }
-        },
-        ...(btcCompareMode ? { y2: {
-          position: 'right',
-          grid: { drawOnChartArea: false },
-          ticks: { color: '#f7931a', font: { family: 'JetBrains Mono', size: 11 }, callback: v => Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v },
-          border: { color: th.grid }
-        }} : {})
+        }
       }
     }
   });
