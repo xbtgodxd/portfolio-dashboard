@@ -143,6 +143,13 @@ body {
 }
 .edit-btn:hover { border-color: var(--cyan); color: var(--cyan); }
 .edit-btn.active { border-color: var(--amber); color: var(--amber); background: var(--amberd); }
+.hist-range { display: inline-flex; border: 1px solid var(--border2); border-radius: 6px; overflow: hidden; }
+.hist-range-btn { background: var(--bg4); border: 0; border-left: 1px solid var(--border2); color: var(--text3);
+  font-family: var(--sans); font-size: 11px; font-weight: 600; padding: 6px 11px; cursor: pointer;
+  transition: background 0.15s, color 0.15s; }
+.hist-range-btn:first-child { border-left: 0; }
+.hist-range-btn:hover { background: var(--bg3); color: var(--text); }
+.hist-range-btn.active { background: var(--amberd); color: var(--amber); }
 .private-toggle-btn { background:var(--bg4); border:1px solid var(--border2); color:var(--text3); padding:6px 14px; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer; font-family:var(--sans); transition:all 0.15s; display:flex; align-items:center; gap:6px; }
 .private-toggle-btn:hover { border-color:var(--purple); color:var(--purple); }
 .private-toggle-btn.active { border-color:var(--purple); color:var(--purple); background:var(--purpled); }
@@ -1252,6 +1259,13 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
   <div class="section-header" style="margin-top:8px">
     <div class="section-title">Net Worth History</div>
     <div style="display:flex;gap:10px;align-items:center">
+      <div class="hist-range">
+        <button class="hist-range-btn" id="histRange-1y"  onclick="setHistoryWindow('1y')">1Y</button>
+        <button class="hist-range-btn" id="histRange-2y"  onclick="setHistoryWindow('2y')">2Y</button>
+        <button class="hist-range-btn" id="histRange-5y"  onclick="setHistoryWindow('5y')">5Y</button>
+        <button class="hist-range-btn" id="histRange-all" onclick="setHistoryWindow('all')">All</button>
+      </div>
+      <button class="edit-btn" id="histLogBtn" onclick="toggleHistoryLog()" title="Log scale — lets a 30x and a 3x share one axis. Months with a zero or negative net worth can't be plotted on a log axis and show as gaps.">log</button>
       <button class="edit-btn" id="btcCompareBtn" onclick="toggleBtcCompare()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L12 6M12 18L12 22M4.93 4.93L7.76 7.76M16.24 16.24L19.07 19.07M2 12L6 12M18 12L22 12M4.93 19.07L7.76 16.24M16.24 7.76L19.07 4.93"/></svg>
         vs BTC
@@ -2103,6 +2117,8 @@ let homeCurrency = 'USD';
 let dashboardName = 'Portfolio Dashboard';
 let theme = 'dark';
 let privateInfoDismissed = false;
+let historyWindow = 'all';   // '1y' | '2y' | '5y' | 'all' — how much history the chart shows
+let historyLogScale = false; // log axis in vs-BTC mode (see renderHistorySection)
 let btcCompareMode = false;
 let privateTabEnabled = false;
 let btcPriceCache = {}; // 'YYYY-MM-01' -> price
@@ -2324,6 +2340,8 @@ function loadState() {
   theme               = saved.theme === 'light' ? 'light' : 'dark';
   privateInfoDismissed = saved.privateInfoDismissed || false;
   privacyMode          = saved.privacyMode || false;
+  historyWindow        = (saved.historyWindow in HISTORY_WINDOWS) ? saved.historyWindow : 'all';
+  historyLogScale      = saved.historyLogScale || false;
   if (saved.fxRates) {
     fxRates = { ...FALLBACK_RATES, ...saved.fxRates };
     fxLastUpdated = saved.fxLastUpdated ? new Date(saved.fxLastUpdated) : null;
@@ -2376,6 +2394,7 @@ function buildStateJson() {
     nextPrivateAssetId, nextPrivateCashId,
     airdrops, nextAirdropId,
     activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode,
+    historyWindow, historyLogScale,
     syncedAt: Date.now() // last-write-wins marker for cloud sync (see CLOUD SYNC section)
   });
 }
@@ -4956,19 +4975,61 @@ function isoToEuropean(iso) {
   return `${d}/${m}/${y}`;
 }
 
-// Rebase a series so its first usable point sits at 0% — the spaghetti-chart form,
-// where every line starts together and vertical distance is relative performance.
-// Returns all-null when the baseline isn't a positive number: % change from zero, or
-// from a negative net worth, has no meaning and would draw a garbage line.
+// How many months each range button shows. 0 = everything.
+const HISTORY_WINDOWS = { '1y': 12, '2y': 24, '5y': 60, 'all': 0 };
+
+// Baseline for a rebased series: the first *positive* point. It has to be positive —
+// growth from zero or from a negative net worth is undefined — and it has to be found
+// rather than assumed to be index 0, because a range button can open a window on a
+// month when net worth was underwater (the 2023 dip). Points before the baseline are
+// null so they draw as gaps instead of silently blanking the whole line.
+function rebaseBaseIndex(values) {
+  return values.findIndex(v => typeof v === 'number' && isFinite(v) && v > 0);
+}
+
+// Percent change from the baseline — the spaghetti-chart form, every line starting
+// together at 0% so vertical distance between them is relative performance.
+// Negative values *after* the baseline are kept: -174% is a real, meaningful point.
 function rebaseToPct(values) {
-  const usable = v => typeof v === 'number' && isFinite(v);
-  const base = values.find(usable);
-  if (!(base > 0)) return values.map(() => null);
-  return values.map(v => usable(v) ? (v / base - 1) * 100 : null);
+  const i = rebaseBaseIndex(values);
+  if (i === -1) return values.map(() => null);
+  const base = values[i];
+  return values.map((v, k) =>
+    (k >= i && typeof v === 'number' && isFinite(v)) ? (v / base - 1) * 100 : null);
+}
+
+// Growth multiple from the baseline (1 = flat). This is what the log axis plots:
+// a log scale cannot render 0% (the baseline itself) or anything below it, so the
+// series has to be expressed as a ratio, and non-positive months drop out as gaps.
+function rebaseToMult(values) {
+  const i = rebaseBaseIndex(values);
+  if (i === -1) return values.map(() => null);
+  const base = values[i];
+  return values.map((v, k) =>
+    (k >= i && typeof v === 'number' && isFinite(v) && v > 0) ? v / base : null);
 }
 
 function fmtPctSigned(v, dp) {
   return (v > 0 ? '+' : '') + v.toFixed(dp) + '%';
+}
+
+function fmtMult(m) {
+  if (m >= 10) return Math.round(m) + 'x';
+  if (m >= 1)  return (Math.round(m * 10) / 10) + 'x';
+  return (Math.round(m * 100) / 100) + 'x';
+}
+
+function setHistoryWindow(w) {
+  if (!(w in HISTORY_WINDOWS)) return;
+  historyWindow = w;
+  saveState();
+  renderHistorySection();
+}
+
+function toggleHistoryLog() {
+  historyLogScale = !historyLogScale;
+  saveState();
+  renderHistorySection();
 }
 
 async function fetchBtcHistoryPrices(dates) {
@@ -5033,29 +5094,47 @@ function renderHistorySection() {
   gradient.addColorStop(0, th.accentFillTop);
   gradient.addColorStop(1, th.accentFillBottom);
 
+  // The range buttons window the *chart*. The entry list further down deliberately
+  // still shows every snapshot, so old months stay editable no matter what's on screen.
+  const winMonths = HISTORY_WINDOWS[historyWindow] || 0;
+  const chartRows = winMonths ? sorted.slice(-winMonths) : sorted;
+  Object.keys(HISTORY_WINDOWS).forEach(w => {
+    const b = document.getElementById('histRange-' + w);
+    if (b) b.classList.toggle('active', historyWindow === w);
+  });
+  // Log only earns its place against BTC, where a 30x and a 3x have to share an axis.
+  const logBtn = document.getElementById('histLogBtn');
+  if (logBtn) {
+    logBtn.style.display = btcCompareMode ? '' : 'none';
+    logBtn.classList.toggle('active', historyLogScale);
+  }
+  const logMode = btcCompareMode && historyLogScale;
+
   // Compute adjusted line: value + cumulative withdrawals to date
   const homeToUsd = amt => amt * (fxRates[homeCurrency] ?? 1);
   let cumWithdrawals = 0;
-  const adjustedData = sorted.map(d => {
+  const adjustedData = chartRows.map(d => {
     cumWithdrawals += homeToUsd((d.salary || 0) + (d.dividend || 0));
     return d.value + cumWithdrawals;
   });
-  const hasWithdrawals = sorted.some(d => d.salary || d.dividend || d.expenses || d.tax);
+  const hasWithdrawals = chartRows.some(d => d.salary || d.dividend || d.expenses || d.tax);
 
   const fmtDkk = fmtHomeAmt;
   const showLegend = hasWithdrawals || btcCompareMode;
   let datasets, yTickCb, tooltipLabelCb;
 
-  if (btcCompareMode && sorted.length) {
+  if (btcCompareMode && chartRows.length) {
     // Spaghetti mode: every line rebased to % change from the first snapshot on one
     // shared axis, so vertical distance is real relative performance and "above the
     // orange line" means you beat BTC. The old build drew dollars on a second right-hand
     // axis, which Chart.js scaled independently — the two lines were not comparable at
     // all. No dollar amounts appear in this mode, on the axis or in the tooltip.
-    const nwPct  = rebaseToPct(sorted.map(d => d.value));
-    const adjPct = rebaseToPct(adjustedData);
-    const btcPct = rebaseToPct(sorted.map(d => btcPriceCache[d.date] ?? null));
-    const pts = sorted.length > 36 ? 0 : 3;
+    // Log plots growth multiples (1 = flat); linear plots % change (0 = flat).
+    const rebase = logMode ? rebaseToMult : rebaseToPct;
+    const nwPct  = rebase(chartRows.map(d => d.value));
+    const adjPct = rebase(adjustedData);
+    const btcPct = rebase(chartRows.map(d => btcPriceCache[d.date] ?? null));
+    const pts = chartRows.length > 36 ? 0 : 3;
     datasets = [
       { label: 'Net Worth', data: nwPct, fill: false, borderColor: th.accent, borderWidth: 2, pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: th.accent, tension: 0.3 },
       ...(hasWithdrawals ? [{ label: 'Withdrawal-adjusted', data: adjPct, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3 }] : []),
@@ -5063,16 +5142,18 @@ function renderHistorySection() {
     ];
     // Percentages are deliberately not masked by privacyMode — same rule as everywhere
     // else in the app: amounts are hidden, relative performance is not.
-    yTickCb = v => fmtPctSigned(v, 0);
+    yTickCb = logMode ? (v => fmtMult(v)) : (v => fmtPctSigned(v, 0));
+    // The tooltip always speaks percent, on either axis — that's the number you want
+    // when comparing, and it saves reading a log axis in your head.
     tooltipLabelCb = ctx => {
       const v = ctx.raw;
       if (typeof v !== 'number') return `  ${ctx.dataset.label}: —`;
-      return `  ${ctx.dataset.label}: ${fmtPctSigned(v, 1)}`;
+      return `  ${ctx.dataset.label}: ${fmtPctSigned(logMode ? (v - 1) * 100 : v, 1)}`;
     };
   } else {
     datasets = [
-      { label: 'Net Worth', data: sorted.map(d => d.value), fill: true, backgroundColor: gradient, borderColor: th.accent, borderWidth: 2, pointRadius: sorted.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent, tension: 0.3 },
-      ...(hasWithdrawals ? [{ label: 'Withdrawal-adjusted', data: adjustedData, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: sorted.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3 }] : [])
+      { label: 'Net Worth', data: chartRows.map(d => d.value), fill: true, backgroundColor: gradient, borderColor: th.accent, borderWidth: 2, pointRadius: chartRows.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent, tension: 0.3 },
+      ...(hasWithdrawals ? [{ label: 'Withdrawal-adjusted', data: adjustedData, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: chartRows.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3 }] : [])
     ];
     yTickCb = v => privacyMode ? '•••' : (Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v);
     tooltipLabelCb = ctx => `  ${ctx.dataset.label}: ${fmtUsd(ctx.raw)}`;
@@ -5081,7 +5162,7 @@ function renderHistorySection() {
   if (historyChartInstance) historyChartInstance.destroy();
   historyChartInstance = new Chart(canvas, {
     type: 'line',
-    data: { labels: sorted.map(d => fmtHistoryDate(d.date)), datasets },
+    data: { labels: chartRows.map(d => fmtHistoryDate(d.date)), datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -5096,7 +5177,7 @@ function renderHistorySection() {
           titleColor: th.body, bodyColor: th.text, padding: 12, displayColors: showLegend,
           callbacks: {
             title: items => {
-              const d = sorted[items[0].dataIndex];
+              const d = chartRows[items[0].dataIndex];
               const parts = [isoToEuropean(d.date)];
               if (!privacyMode) {
                 if (d.salary)   parts.push(`Salary: ${fmtDkk(d.salary)}`);
@@ -5119,10 +5200,11 @@ function renderHistorySection() {
           border: { color: th.grid }
         },
         y: {
+          ...(logMode ? { type: 'logarithmic' } : {}),
           grid: {
-            // In vs-BTC mode the 0% line is the one that matters (flat since day one),
-            // so draw it brighter than the rest of the grid.
-            color: c => (btcCompareMode && c.tick && c.tick.value === 0) ? th.divider : th.grid
+            // In vs-BTC mode the flat line is the one that matters — 0% on the linear
+            // axis, 1x on the log one. Draw it brighter than the rest of the grid.
+            color: c => (btcCompareMode && c.tick && c.tick.value === (logMode ? 1 : 0)) ? th.divider : th.grid
           },
           ticks: { color: th.muted, font: { family: 'JetBrains Mono', size: 11 }, callback: yTickCb },
           border: { color: th.grid }
