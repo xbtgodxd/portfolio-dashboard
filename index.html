@@ -2462,11 +2462,19 @@ let _cloudWriteTimer = null;
 // and an empty/failed read must never be mistaken for "the file is stale, overwrite it".
 let cloudSyncReady = false;
 
-const cloudSupported = () => typeof window !== 'undefined' && !!window.showSaveFilePicker && !!window.indexedDB;
+const cloudSupported = () => typeof window !== 'undefined' && !!window.showSaveFilePicker && !!window.showOpenFilePicker && !!window.indexedDB;
 
 // Pure last-write-wins decision — extracted so it's unit-testable without the file APIs.
 function shouldAdoptRemote(localSyncedAt, remoteSyncedAt) {
   return (remoteSyncedAt || 0) > (localSyncedAt || 0);
+}
+
+// A cloud provider that hits a conflict renames our file ("conflicted copy") and leaves a
+// different file at the old name. The handle follows the rename, so the device keeps
+// happily writing to a file nobody else reads while the badge still says "Synced". The
+// file name is the one thing we can check cheaply — pure, so it's unit-testable.
+function syncFileRenamed(savedName, currentName) {
+  return !!savedName && !!currentName && savedName !== currentName;
 }
 
 // Tiny IndexedDB key-value store (localStorage can't hold a FileSystemFileHandle).
@@ -2571,6 +2579,16 @@ async function initCloudSync() {
   try { handle = await idbGet('syncHandle'); } catch (_) {}
   if (!handle) { cloudSyncState = 'off'; updateCloudSyncBtn(); return; }
   cloudSyncHandle = handle;
+  let savedName = null;
+  try { savedName = await idbGet('syncName'); } catch (_) {}
+  if (syncFileRenamed(savedName, handle.name)) {
+    // Dropbox/iCloud renamed our file to a "conflicted copy" and put a different file at
+    // the old name. Keep writing and this device talks only to itself.
+    cloudSyncState = 'error';
+    updateCloudSyncBtn();
+    showUndoToast('⚠ Your sync file was renamed by your cloud folder (conflicted copy?) — click Sync Error to pick it again');
+    return;
+  }
   let perm = 'prompt';
   try { perm = await handle.queryPermission({ mode: 'readwrite' }); } catch (_) {}
   if (perm === 'granted') {
@@ -2584,7 +2602,51 @@ async function initCloudSync() {
   }
 }
 
-async function connectCloudSync() {
+// Two ways in, and they must not share a picker. `showSaveFilePicker` TRUNCATES the file
+// the user picks: choosing an existing sync file with it empties the file before we ever
+// get to read it, so the adopt prompt never fires and this device writes its own (older)
+// state over everything the other device had. Joining an existing file therefore goes
+// through `showOpenFilePicker`, which cannot destroy what it opens.
+function connectCloudSync() {
+  const join = confirm('Cloud sync\n\nOK \u2014 connect to an EXISTING sync file (you already set one up on another device).\n\nCancel \u2014 create a NEW sync file for this dashboard.');
+  return join ? joinCloudSync() : createCloudSync();
+}
+
+// Connect to a file another device already made. Read first, always.
+async function joinCloudSync() {
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      multiple: false,
+      types: [{ description: 'Dashboard sync file', accept: { 'application/json': ['.json'] } }],
+    });
+    if (!(await verifyPermission(handle, true))) return;
+    cloudSyncHandle = handle;
+    let remote = null;
+    try { remote = await cloudReadFile(); } catch (e) { console.warn('cloud sync read failed:', e); }
+    if (!remote) {
+      // The file exists but will not read — nearly always a cloud placeholder that has
+      // not finished downloading. Writing to it here is exactly how one device wipes another.
+      cloudSyncHandle = null;
+      showUndoToast('⚠ That file could not be read — let your cloud folder finish downloading it, then try again');
+      return;
+    }
+    const when = remote.syncedAt ? new Date(remote.syncedAt).toLocaleString() : 'an earlier time';
+    if (!confirm(`This sync file was last saved ${when} and holds ${remote.portfolio.length} open position(s).\n\nOK \u2014 load it onto THIS device (replaces what's here).\nCancel \u2014 keep this device's data and overwrite the file.`)) {
+      await cloudPushLocal(handle); // we read it, the user chose — overwriting is informed now
+      return;
+    }
+    cloudSyncReady = false; // the reloaded page re-establishes the gate from scratch
+    localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
+    await cloudRemember(handle);
+    showUndoToast('Cloud sync connected — loading synced data ✓');
+    setTimeout(() => location.reload(), 700);
+  } catch (e) {
+    if (e.name !== 'AbortError') console.warn('cloud sync join failed:', e);
+  }
+}
+
+// Make a fresh sync file for this dashboard. A save picker is right here: the file is new.
+async function createCloudSync() {
   try {
     const handle = await window.showSaveFilePicker({
       suggestedName: 'portfolio-dashboard-sync.json',
@@ -2592,34 +2654,31 @@ async function connectCloudSync() {
     });
     if (!(await verifyPermission(handle, true))) return;
     cloudSyncHandle = handle;
-    let remote = null;
-    try { remote = await cloudReadFile(); } catch (_) {}
-    if (remote && remote.portfolio.length) {
-      // Connecting an additional device to an existing file — offer to load it.
-      const when = remote.syncedAt ? new Date(remote.syncedAt).toLocaleString() : 'an earlier time';
-      if (confirm(`This sync file already has data (saved ${when}).\n\nOK — load it onto THIS device (replaces what's here).\nCancel — keep this device's data and overwrite the file.`)) {
-        cloudSyncReady = false;
-        localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
-        await idbSet('syncHandle', handle);
-        showUndoToast('Cloud sync connected — loading synced data ✓');
-        setTimeout(() => location.reload(), 700);
-        return;
-      }
-    }
-    // First device, or user chose to keep local: push local into the file.
-    const json = buildStateJson();
-    localStorage.setItem(SYNC_KEY, json);
-    const w = await handle.createWritable();
-    await w.write(json);
-    await w.close();
-    await idbSet('syncHandle', handle);
-    cloudSyncReady = true; // we just wrote it ourselves, so we know exactly what it holds
-    cloudSyncState = 'connected';
-    updateCloudSyncBtn();
-    showUndoToast('Cloud sync connected ✓ — changes now auto-save to your file');
+    await cloudPushLocal(handle);
   } catch (e) {
-    if (e.name !== 'AbortError') console.warn('cloud sync connect failed:', e);
+    if (e.name !== 'AbortError') console.warn('cloud sync create failed:', e);
   }
+}
+
+// Push this device's state into the file and open the gate — we wrote it, so we know
+// exactly what it holds.
+async function cloudPushLocal(handle) {
+  const json = buildStateJson();
+  localStorage.setItem(SYNC_KEY, json);
+  const w = await handle.createWritable();
+  await w.write(json);
+  await w.close();
+  await cloudRemember(handle);
+  cloudSyncReady = true;
+  cloudSyncState = 'connected';
+  updateCloudSyncBtn();
+  showUndoToast('Cloud sync connected ✓ — changes now auto-save to your file');
+}
+
+// Persist the handle plus the file name we expect it to keep pointing at.
+async function cloudRemember(handle) {
+  await idbSet('syncHandle', handle);
+  try { await idbSet('syncName', handle.name); } catch (_) {}
 }
 
 async function reconnectCloudSync() {
@@ -2636,14 +2695,15 @@ async function disconnectCloudSync() {
   cloudSyncHandle = null;
   cloudSyncState = 'off';
   cloudSyncReady = false;
-  try { await idbDel('syncHandle'); } catch (_) {}
+  try { await idbDel('syncHandle'); await idbDel('syncName'); } catch (_) {}
   updateCloudSyncBtn();
   showUndoToast('Cloud sync turned off on this device');
 }
 
 function cloudSyncButtonClick() {
   if (cloudSyncState === 'off') connectCloudSync();
-  else if (cloudSyncState === 'reconnect' || cloudSyncState === 'error') reconnectCloudSync();
+  else if (cloudSyncState === 'reconnect') reconnectCloudSync();
+  else if (cloudSyncState === 'error') joinCloudSync();
   else if (cloudSyncState === 'connected') disconnectCloudSync();
 }
 
