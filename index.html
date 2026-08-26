@@ -2435,6 +2435,9 @@ function importBackup(input) {
     if (data.privateTabEnabled === undefined && ((data.privateAssets || []).length || (data.privateCash || []).length)) {
       data.privateTabEnabled = true;
     }
+    // Stamp it as the newest state there is, or cloud sync will treat the restore as stale
+    // and pull the old file back over it on the very next check.
+    data.syncedAt = Date.now();
     if (!confirm(`Restore backup "${file.name}"?\n\nThis replaces EVERYTHING currently in the dashboard with the backup's contents.\n\nOnly restore files you created yourself.`)) return;
     try {
       localStorage.setItem('portfolio-dashboard-template', JSON.stringify(data));
@@ -2456,6 +2459,7 @@ const SYNC_KEY = 'portfolio-dashboard-template';
 let cloudSyncHandle = null;
 let cloudSyncState = 'off'; // 'off' | 'connected' | 'reconnect' | 'error' | 'unsupported'
 let _cloudWriteTimer = null;
+let _pendingCloudJson = null;
 // Write gate. Stays false until we have positively established what the sync file holds
 // (adopted it, or read it and confirmed ours is newer). Writing before that is how a
 // second device silently clobbers the first: the file may simply not be downloaded yet,
@@ -2505,33 +2509,106 @@ async function verifyPermission(handle, write) {
   return false;
 }
 
+// The exact text the file held the last time this device read or wrote it. Comparing
+// against this is how we notice the other machine edited the file — content, not clocks.
+// Two machines never agree on Date.now(), and a Mac running a minute behind would have
+// every edit judged "older" and silently dropped.
+let _lastFileSeen = null;
+let _lastReadText = null;
+
 async function cloudReadFile() {
   const file = await cloudSyncHandle.getFile();
   const text = await file.text();
+  _lastReadText = text;
   if (!text.trim()) return null;
   const data = JSON.parse(text);
   return (data && Array.isArray(data.portfolio)) ? data : null;
 }
 
+// True when the file changed underneath us since we last read or wrote it.
+function cloudFileChangedUnderUs(currentText) {
+  return _lastFileSeen !== null && currentText !== _lastFileSeen;
+}
+
+// The state minus everything that changes by itself. A price refresh is not an edit, and
+// must not count as "this device has newer data": `fetchPrices()` runs every 60s and calls
+// `saveState()`, so an idle open tab used to bump `syncedAt` and rewrite the file once a
+// minute. Whichever machine merely had the tab open therefore always won last-write-wins
+// and silently reverted the other machine's real edits — rename the dashboard on the Mac,
+// open Windows, and Windows would stamp the old name back within the minute.
+function cloudSignature(json) {
+  let d;
+  try { d = JSON.parse(json); } catch (_) { return json; }
+  delete d.syncedAt;
+  delete d.fxRates; delete d.fxLastUpdated; delete d.fxSource;
+  const stripPrices = arr => {
+    if (Array.isArray(arr)) arr.forEach(x => { if (x && typeof x === 'object') delete x.currentPrice; });
+  };
+  stripPrices(d.portfolio); stripPrices(d.privateAssets);
+  return JSON.stringify(d);
+}
+let _lastCloudSignature = null;
+
 // Debounced write of the exact JSON already saved to localStorage.
 function cloudSyncWrite(json) {
   if (cloudSyncState !== 'connected' || !cloudSyncHandle || !cloudSyncReady) return;
+  const sig = cloudSignature(json);
+  if (sig === _lastCloudSignature) return; // nothing a human changed — leave the file alone
+  _lastCloudSignature = sig;
+  _pendingCloudJson = json;
   clearTimeout(_cloudWriteTimer);
-  _cloudWriteTimer = setTimeout(async () => {
-    try {
-      const w = await cloudSyncHandle.createWritable();
-      await w.write(json);
-      await w.close();
-    } catch (e) {
-      // A silent failure here used to leave the button reading "Synced ✓" while nothing
-      // was being written — the badge has to tell the truth.
-      console.warn('cloud sync write failed:', e);
+  _cloudWriteTimer = setTimeout(cloudFlushWrite, 1200);
+}
+
+// The whole write, separated out so a tab going away can push the last edit out before it
+// dies: the 1.2s debounce used to swallow an edit made just before closing the tab.
+async function cloudFlushWrite() {
+  clearTimeout(_cloudWriteTimer);
+  _cloudWriteTimer = null;
+  const json = _pendingCloudJson;
+  _pendingCloudJson = null;
+  if (!json || cloudSyncState !== 'connected' || !cloudSyncHandle || !cloudSyncReady) return;
+  try {
+    // Read before write, always. visibilitychange never fires for a tab that never lost
+    // focus, so this is the only check that catches an edit made on the other machine
+    // while this one simply sat there.
+    let remote = null;
+    try { remote = await cloudReadFile(); } catch (e) { console.warn('cloud sync read failed:', e); }
+    if (!remote) {
       cloudSyncReady = false;
+      _lastCloudSignature = null; // this state still needs writing - let a retry through
       cloudSyncState = 'error';
       updateCloudSyncBtn();
-      showUndoToast('⚠ Could not write to your sync file — click Sync Error to reconnect');
+      showUndoToast('⚠ Sync file could not be read — nothing was saved to it. Click Sync Error to retry');
+      return;
     }
-  }, 1200);
+    if (cloudFileChangedUnderUs(_lastReadText)) {
+      // Both machines edited. Last-write-wins cannot merge, so never pick a side silently.
+      const when = remote.syncedAt ? new Date(remote.syncedAt).toLocaleString() : 'since you last looked';
+      if (!confirm(`Your other device changed the sync file (saved ${when}).\n\nOK — keep THIS device's version and overwrite the file.\n\nCancel — load the other device's version instead (what you just changed here is lost).`)) {
+        cloudSyncReady = false;
+        _lastCloudSignature = null;
+        localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
+        _lastFileSeen = _lastReadText;
+        showUndoToast('Loaded your other device’s version ✓');
+        setTimeout(() => location.reload(), 700);
+        return;
+      }
+    }
+    const w = await cloudSyncHandle.createWritable();
+    await w.write(json);
+    await w.close();
+    _lastFileSeen = json;
+  } catch (e) {
+    // A silent failure here used to leave the button reading "Synced ✓" while nothing
+    // was being written — the badge has to tell the truth.
+    console.warn('cloud sync write failed:', e);
+    cloudSyncReady = false;
+    _lastCloudSignature = null; // this state still needs writing - let a retry through
+    cloudSyncState = 'error';
+    updateCloudSyncBtn();
+    showUndoToast('⚠ Could not write to your sync file — click Sync Error to reconnect');
+  }
 }
 
 // On open, reconnect, or refocus: read the file and decide what to do. Returns
@@ -2546,18 +2623,26 @@ async function cloudMaybeAdoptRemote() {
   } catch (e) {
     console.warn('cloud sync read failed:', e);
     cloudSyncReady = false;
+    _lastCloudSignature = null;
     return 'unreadable';
   }
-  if (!remote) { cloudSyncReady = false; return 'unreadable'; }
+  if (!remote) { cloudSyncReady = false; _lastCloudSignature = null; return 'unreadable'; }
   const localSyncedAt = (JSON.parse(localStorage.getItem(SYNC_KEY) || '{}')).syncedAt || 0;
   if (shouldAdoptRemote(localSyncedAt, remote.syncedAt)) {
     cloudSyncReady = false; // hold writes; the reloaded page re-establishes them from scratch
+    _lastCloudSignature = null;
+    _lastFileSeen = _lastReadText;
     localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
     showUndoToast('Loaded newer data from your cloud sync ✓');
     setTimeout(() => location.reload(), 700);
     return 'adopted';
   }
   cloudSyncReady = true; // read succeeded and ours is newer — safe to write
+  _lastFileSeen = _lastReadText;
+  // Converge now rather than waiting for the next edit: after a Restore, or a session that
+  // ended offline, this device holds newer data the file has never seen.
+  const localJson = localStorage.getItem(SYNC_KEY);
+  if (localJson) cloudSyncWrite(localJson);
   return 'local-newer';
 }
 
@@ -2599,6 +2684,7 @@ async function initCloudSync() {
     // Chromium drops read-write grants across sessions — needs one click to re-authorize.
     cloudSyncState = 'reconnect';
     updateCloudSyncBtn();
+    showUndoToast('Cloud sync is paused — click Reconnect Sync to resume saving to your file');
   }
 }
 
@@ -2614,7 +2700,7 @@ async function initCloudSync() {
 async function connectCloudSync() {
   const outcome = await joinCloudSync();
   if (outcome !== 'cancelled') return;
-  if (confirm('No sync file selected.\n\nOK \u2014 create a NEW sync file (do this on the FIRST device only; it overwrites the file you point it at).\n\nCancel \u2014 stop, change nothing.')) {
+  if (confirm('No sync file selected.\n\nOK — create a NEW sync file (do this on the FIRST device only; it overwrites the file you point it at).\n\nCancel — stop, change nothing.')) {
     await createCloudSync();
   }
 }
@@ -2638,21 +2724,23 @@ async function joinCloudSync() {
     let remote = null;
     try { remote = await cloudReadFile(); } catch (e) { console.warn('cloud sync read failed:', e); }
     if (!remote) {
-      // The file exists but will not read \u2014 nearly always a cloud placeholder that has
+      // The file exists but will not read — nearly always a cloud placeholder that has
       // not finished downloading. Writing to it here is how one device wipes another.
       cloudSyncHandle = null;
-      showUndoToast('\u26a0 That file could not be read \u2014 let your cloud folder finish downloading it, then try again');
+      cloudSyncReady = false; // an unreadable file never opens the write gate
+      showUndoToast('⚠ That file could not be read — let your cloud folder finish downloading it, then try again');
       return 'unreadable';
     }
     const when = remote.syncedAt ? new Date(remote.syncedAt).toLocaleString() : 'an earlier time';
-    if (!confirm(`This sync file was last saved ${when} and holds ${remote.portfolio.length} open position(s).\n\nOK \u2014 load it onto THIS device (replaces what is on this device).\n\nCancel \u2014 stop, change nothing.`)) {
+    if (!confirm(`This sync file was last saved ${when} and holds ${remote.portfolio.length} open position(s).\n\nOK — load it onto THIS device (replaces what is on this device).\n\nCancel — stop, change nothing.`)) {
       cloudSyncHandle = null;
       return 'declined';
     }
     cloudSyncReady = false; // the reloaded page re-establishes the gate from scratch
+    _lastFileSeen = _lastReadText;
     localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
     await cloudRemember(handle);
-    showUndoToast('Cloud sync connected \u2014 loading synced data \u2713');
+    showUndoToast('Cloud sync connected — loading synced data ✓');
     setTimeout(() => location.reload(), 700);
     return 'adopted';
   } catch (e) {
@@ -2681,6 +2769,8 @@ async function createCloudSync() {
 // exactly what it holds.
 async function cloudPushLocal(handle) {
   const json = buildStateJson();
+  _lastCloudSignature = cloudSignature(json);
+  _lastFileSeen = json; // we are about to write exactly this
   localStorage.setItem(SYNC_KEY, json);
   const w = await handle.createWritable();
   await w.write(json);
@@ -2975,7 +3065,7 @@ async function fetchPrices() {
   if (updated) {
     pricesLastUpdated = new Date();
     saveState();
-    renderAll();
+    renderAllSafe(); // never rebuild the DOM out from under a field being typed in
     renderFxBar();
   }
 }
@@ -3089,7 +3179,7 @@ function updateCash(id, field, value) {
   const c = cashPositions.find(c => c.id === id);
   if (!c) return;
   if (field === 'amount') {
-    const v = parseFloat(value);
+    const v = parseUserNumber(value);
     if (isNaN(v) || v < 0 || c.amount === v) return;
     pushUndo(`edit cash ${c.label}`);
     c.amount = v;
@@ -3442,8 +3532,35 @@ function renderTable(data) {
   else document.getElementById('tableWrap').classList.remove('edit-mode');
 }
 
+// Numbers typed by a human, in either convention. The inline cells are plain text inputs,
+// and the old code stripped every comma as a thousands separator — so a Danish keyboard
+// typing "1,5" units silently stored 15, and "0,05" stored 5. Ten to a hundred times off,
+// no error, straight into the portfolio.
+//
+// Rules: if both separators appear, the rightmost one is the decimal mark and the other
+// groups thousands. If only commas appear, a single comma with one or two digits after it
+// is a decimal ("1,5", "12,25"); anything else is grouping ("1,000", "1,234,567").
+function parseUserNumber(raw) {
+  if (typeof raw === 'number') return raw;
+  if (typeof raw !== 'string') return NaN;
+  let s = raw.trim().replace(/[$\s\u00a0]/g, '');
+  if (!s) return NaN;
+  const lastComma = s.lastIndexOf(',');
+  const lastDot   = s.lastIndexOf('.');
+  if (lastComma > -1 && lastDot > -1) {
+    if (lastComma > lastDot) s = s.replace(/\./g, '').replace(',', '.');
+    else                     s = s.replace(/,/g, '');
+  } else if (lastComma > -1) {
+    const digitsAfter = s.length - lastComma - 1;
+    const single = s.indexOf(',') === lastComma;
+    s = (single && digitsAfter > 0 && digitsAfter <= 2) ? s.replace(',', '.') : s.replace(/,/g, '');
+  }
+  const n = parseFloat(s);
+  return isFinite(n) ? n : NaN;
+}
+
 function updatePrice(posId, rawVal) {
-  const val = parseFloat(rawVal.replace(/[$,]/g, ''));
+  const val = parseUserNumber(rawVal);
   if (isNaN(val) || val <= 0) return;
   const p = portfolio.find(p => p.posId === posId);
   if (!p) return;
@@ -3746,7 +3863,7 @@ function promptTarget(posId) {
 }
 
 function updateEntryPrice(posId, rawVal) {
-  const val = parseFloat(rawVal.replace(/[$,]/g, ''));
+  const val = parseUserNumber(rawVal);
   if (isNaN(val) || val <= 0) return;
   const p = portfolio.find(p => p.posId === posId);
   if (!p || p.entryPrice === val) return;
@@ -3762,7 +3879,7 @@ function updateEntryPrice(posId, rawVal) {
 let _pendingUnits = null; // { posId, newUnits, oldUnits }
 
 function updateUnits(posId, rawVal) {
-  const val = parseFloat(rawVal.replace(/[,]/g, ''));
+  const val = parseUserNumber(rawVal);
   if (isNaN(val) || val <= 0) return;
   const p = portfolio.find(p => p.posId === posId);
   if (!p) return;
@@ -5880,7 +5997,7 @@ function removePrivateCash(id) {
   renderPrivateTab();
 }
 function updatePrivateCashAmount(id, rawVal) {
-  const val = parseFloat(rawVal.replace(/[^0-9.-]/g, ''));
+  const val = parseUserNumber(rawVal);
   if (isNaN(val) || val < 0) return;
   const entry = privateCash.find(c => c.id === id);
   if (!entry || entry.amount === val) return;
@@ -5890,7 +6007,7 @@ function updatePrivateCashAmount(id, rawVal) {
   renderPrivateTab();
 }
 function updatePrivateAssetValue(id, rawVal) {
-  const val = parseFloat(rawVal.replace(/[^0-9.-]/g, ''));
+  const val = parseUserNumber(rawVal);
   if (isNaN(val) || val < 0) return;
   const asset = privateAssets.find(a => a.id === id);
   if (!asset || asset.value === val) return;
@@ -5900,7 +6017,7 @@ function updatePrivateAssetValue(id, rawVal) {
   renderPrivateTab();
 }
 function updatePrivateAssetUnits(id, rawVal) {
-  const val = parseFloat(rawVal.replace(/[^0-9.-]/g, ''));
+  const val = parseUserNumber(rawVal);
   if (isNaN(val) || val < 0) return;
   const asset = privateAssets.find(a => a.id === id);
   if (!asset || asset.units === val) return;
@@ -6469,6 +6586,36 @@ function removeAirdrop(id) {
   renderAirdropTab();
 }
 
+// A background price refresh must never destroy the field you are typing in. Every inline
+// editor — cash label and amount, entry price, current price, units, the thesis box —
+// commits its value on blur and lives inside DOM that renderAll() tears down and rebuilds.
+// A refresh landing mid-edit therefore threw away whatever had been typed but not yet
+// blurred. So: if the user is in a field, hold the render until they leave it.
+let _renderDeferred = false;
+
+function isEditingField() {
+  const el = document.activeElement;
+  if (!el || el === document.body) return false;
+  const tag = (el.tagName || '').toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true;
+}
+
+// Use this from anything that fires on its own (timers, fetches) instead of renderAll().
+function renderAllSafe() {
+  if (isEditingField()) { _renderDeferred = true; return; }
+  renderAll();
+}
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  // focusout fires before the field is gone, so let the blur handler commit the value first.
+  document.addEventListener('focusout', () => {
+    if (!_renderDeferred) return;
+    setTimeout(() => {
+      if (_renderDeferred && !isEditingField()) { _renderDeferred = false; renderAll(); }
+    }, 0);
+  });
+}
+
 function renderAll() {
   const data = computeAll();
   renderSummary(data);
@@ -6505,6 +6652,8 @@ initCloudSync(); // restores a previously-connected cloud-sync file (no-op if un
 // a backgrounded tab failing a read is not worth a toast.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && cloudSyncState === 'connected') cloudRecheck(true);
+  // Leaving: get the pending edit out now rather than letting the debounce die with the tab.
+  if (document.visibilityState === 'hidden' && _pendingCloudJson) cloudFlushWrite();
 });
 </script>
 </body>
