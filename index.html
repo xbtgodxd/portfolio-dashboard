@@ -145,7 +145,7 @@ body {
 .edit-btn.active { border-color: var(--amber); color: var(--amber); background: var(--amberd); }
 .hist-range { display: inline-flex; border: 1px solid var(--border2); border-radius: 6px; overflow: hidden; }
 .hist-range-btn { background: var(--bg4); border: 0; border-left: 1px solid var(--border2); color: var(--text3);
-  font-family: var(--sans); font-size: 11px; font-weight: 600; padding: 6px 11px; cursor: pointer;
+  font-family: var(--sans); font-size: 11px; font-weight: 600; padding: 6px 9px; cursor: pointer;
   transition: background 0.15s, color 0.15s; }
 .hist-range-btn:first-child { border-left: 0; }
 .hist-range-btn:hover { background: var(--bg3); color: var(--text); }
@@ -224,6 +224,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-bottom: 14px;
 }
 .section-title {
@@ -1260,6 +1262,8 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="section-title">Net Worth History</div>
     <div style="display:flex;gap:10px;align-items:center">
       <div class="hist-range">
+        <button class="hist-range-btn" id="histRange-3m"  onclick="setHistoryWindow('3m')">3M</button>
+        <button class="hist-range-btn" id="histRange-6m"  onclick="setHistoryWindow('6m')">6M</button>
         <button class="hist-range-btn" id="histRange-1y"  onclick="setHistoryWindow('1y')">1Y</button>
         <button class="hist-range-btn" id="histRange-2y"  onclick="setHistoryWindow('2y')">2Y</button>
         <button class="hist-range-btn" id="histRange-5y"  onclick="setHistoryWindow('5y')">5Y</button>
@@ -2149,7 +2153,7 @@ let homeCurrency = 'USD';
 let dashboardName = 'Portfolio Dashboard';
 let theme = 'dark';
 let privateInfoDismissed = false;
-let historyWindow = 'all';   // '1y' | '2y' | '5y' | 'all' — how much history the chart shows
+let historyWindow = 'all';   // '3m' | '6m' | '1y' | '2y' | '5y' | 'all' — how much history the chart shows
 let historyLogScale = false; // log axis in vs-BTC mode (see renderHistorySection)
 let btcCompareMode = false;
 let privateTabEnabled = false;
@@ -4880,7 +4884,7 @@ function isoToEuropean(iso) {
 }
 
 // How many months each range button shows. 0 = everything.
-const HISTORY_WINDOWS = { '1y': 12, '2y': 24, '5y': 60, 'all': 0 };
+const HISTORY_WINDOWS = { '3m': 3, '6m': 6, '1y': 12, '2y': 24, '5y': 60, 'all': 0 };
 
 // Baseline for a rebased series: the first *positive* point. It has to be positive —
 // growth from zero or from a negative net worth is undefined — and it has to be found
