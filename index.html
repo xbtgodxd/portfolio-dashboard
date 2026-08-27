@@ -329,6 +329,10 @@ tr:hover td { background: var(--bg3); }
 .pnl-usd.neg { color: var(--red); opacity: 0.7; }
 .realized-sub { font-family: var(--mono); font-size: 10px; color: var(--text3); cursor: pointer; border-bottom: 1px dashed var(--text3); line-height: 1.2; }
 .realized-sub:hover { color: var(--cyan); border-color: var(--cyan); }
+/* Privacy mode dots out amounts, but an <input> the user types into can't be replaced with
+   dots without destroying the value. Blur it instead; focus sharpens it so it stays usable. */
+.privacy-blur { filter: blur(5px); transition: filter .12s ease; }
+.privacy-blur:focus { filter: none; }
 .close-btn {
   background: none; border: 1px solid var(--border2); border-radius: 5px;
   color: var(--text3); cursor: pointer; padding: 3px 7px; font-size: 10px;
@@ -1157,10 +1161,6 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       Restore
     </button>
-    <button class="undo-btn" id="cloudSyncBtn" onclick="cloudSyncButtonClick()" style="display:none" title="Sync this dashboard to a file in your own cloud folder">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
-      <span id="cloudSyncLabel">Cloud Sync</span>
-    </button>
     <input type="file" id="importFileInput" accept=".json,application/json" style="display:none" onchange="importBackup(this)" />
     <button class="private-toggle-btn" id="privateToggleBtn" onclick="togglePrivateTab()" title="Show/hide the Private tab">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -1880,6 +1880,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
             <input class="form-input" id="lpt-price" type="number" step="any" min="0" />
           </div>
         </div>
+        <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text2);margin:2px 0 10px;cursor:pointer">
+          <input type="checkbox" id="lpt-adjust" checked style="width:14px;height:14px;cursor:pointer" />
+          <span>Adjust the position too <span style="color:var(--text3)">— a sell reduces units and books the realized P&amp;L; a buy adds units and re-averages entry. Uncheck to only record history you have already accounted for.</span></span>
+        </label>
         <div class="form-error" id="lpt-error"></div>
         <button class="btn-primary" style="padding:8px 16px;font-size:12px" onclick="submitPastTrade()">Add to log</button>
       </div>
@@ -2019,20 +2023,48 @@ const DEFAULT_CASH = [
 ];
 
 const CASH_COLOR = '#ffd60a'; // reserved for Cash slice — never assigned to positions
+// Slice/dot colours, in assignment order. Chosen by farthest-point search in OKLab rather
+// than by eye: the previous list varied hue but not lightness, so violet/purple (#8b5cf6 vs
+// #9945ff) sat 0.046 apart perceptually and neighbouring pie slices blurred together. These
+// are 0.145 apart at the closest, ~3x, and consecutive entries are further apart still so a
+// two- or three-position portfolio gets maximally separated colours. Regenerating: the
+// search script wants in-gamut OKLCH with L 0.60-0.82 and C <= 0.185, seeded with the three
+// pinned colours below.
 const COLOR_PALETTE = [
   { color: '#00d4ff', bg: 'rgba(0,212,255,0.12)' },
-  { color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
-  { color: '#f7931a', bg: 'rgba(247,147,26,0.12)' },
-  { color: '#00c896', bg: 'rgba(0,200,150,0.12)' },
-  { color: '#ff6b35', bg: 'rgba(255,107,53,0.12)' },
-  { color: '#9945ff', bg: 'rgba(153,69,255,0.12)' },
-  { color: '#76b900', bg: 'rgba(118,185,0,0.12)' },
-  { color: '#00a4ef', bg: 'rgba(0,164,239,0.12)' },
-  { color: '#ff4757', bg: 'rgba(255,71,87,0.12)' },
-  { color: '#fd79a8', bg: 'rgba(253,121,168,0.12)' },
-  { color: '#a29bfe', bg: 'rgba(162,155,254,0.12)' },
-  { color: '#55efc4', bg: 'rgba(85,239,196,0.12)' },
+  { color: '#d14380', bg: 'rgba(209,67,128,0.12)' },
+  { color: '#10d095', bg: 'rgba(16,208,149,0.12)' },
+  { color: '#a855f7', bg: 'rgba(168,85,247,0.12)' },
+  { color: '#b9cb11', bg: 'rgba(185,203,17,0.12)' },
+  { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+  { color: '#f57400', bg: 'rgba(245,116,0,0.12)' },
+  { color: '#a49cff', bg: 'rgba(164,156,255,0.12)' },
+  { color: '#199a28', bg: 'rgba(25,154,40,0.12)' },
+  { color: '#ff94dd', bg: 'rgba(255,148,221,0.12)' },
+  { color: '#9e7b0b', bg: 'rgba(158,123,11,0.12)' },
+  { color: '#179fa7', bg: 'rgba(23,159,167,0.12)' },
 ];
+
+// Positions whose colour is fixed by ticker, so the same asset reads the same on every
+// device and after any reshuffle. These must exist in COLOR_PALETTE above.
+const TICKER_COLORS = {
+  HYPE: '#3b82f6', // blue
+  SOL:  '#a855f7', // purple
+};
+
+// The palette entry for a pinned ticker, or null if the ticker isn't pinned.
+function pinnedColor(ticker) {
+  const hex = TICKER_COLORS[(ticker || '').toUpperCase()];
+  return hex ? (COLOR_PALETTE.find(c => c.color === hex) || null) : null;
+}
+
+// First unused palette entry, honouring a ticker pin when there is one.
+function nextColorFor(ticker) {
+  const pin = pinnedColor(ticker);
+  if (pin) return pin;
+  const used = new Set(portfolio.map(p => p.color));
+  return COLOR_PALETTE.find(c => !used.has(c.color)) || COLOR_PALETTE[portfolio.length % COLOR_PALETTE.length];
+}
 
 const SECTOR_COLORS = {
   "Crypto":       { color: "#f7931a", bg: "rgba(247,147,26,0.12)" },
@@ -2172,7 +2204,10 @@ function downscaleToDataUrl(img) {
 
 function deduplicateColors() {
   const usedColors = new Set([CASH_COLOR]); // reserve cash color upfront
+  // Pinned tickers claim their colour first, so a same-coloured neighbour is the one moved.
+  portfolio.forEach(p => { if (pinnedColor(p.ticker)) usedColors.add(pinnedColor(p.ticker).color); });
   portfolio.forEach(p => {
+    if (pinnedColor(p.ticker)) return;
     if (!usedColors.has(p.color)) {
       usedColors.add(p.color);
     } else {
@@ -2296,6 +2331,29 @@ function dismissPrivateInfo() {
   applyPrivateTabVisibility();
 }
 
+// Existing positions carry colours picked from whatever palette was current when they were
+// added, so a new palette would only ever reach *new* rows. This repaints everything once,
+// then records the version and never touches colours again — so a colour the user picks with
+// the row dot afterwards survives. Bump PALETTE_VERSION only for a genuine palette change.
+const PALETTE_VERSION = 2;
+
+function repaintFromPalette(savedVersion) {
+  if (savedVersion === PALETTE_VERSION) return;
+  const taken = new Set();
+  portfolio.forEach(p => { const pin = pinnedColor(p.ticker); if (pin) taken.add(pin.color); });
+  let next = 0;
+  portfolio.forEach(p => {
+    const pin = pinnedColor(p.ticker);
+    if (pin) { p.color = pin.color; p.bg = pin.bg; return; }
+    while (next < COLOR_PALETTE.length && taken.has(COLOR_PALETTE[next].color)) next++;
+    const c = COLOR_PALETTE[next % COLOR_PALETTE.length];
+    next++;
+    p.color = c.color;
+    p.bg    = c.bg;
+    taken.add(c.color);
+  });
+}
+
 function loadState() {
   const saved = JSON.parse(localStorage.getItem('portfolio-dashboard-template') || '{}');
   if (saved.portfolio && Array.isArray(saved.portfolio) && saved.portfolio.length > 0) {
@@ -2310,6 +2368,7 @@ function loadState() {
     });
   }
   nextPosId = Math.max(0, ...portfolio.map(p => p.posId)) + 1;
+  repaintFromPalette(saved.paletteVersion);
   // Deduplicate colors across all positions — fix any collisions left in saved state
   deduplicateColors();
   migrateState();
@@ -2350,16 +2409,12 @@ function loadState() {
 }
 
 function saveState() {
-  // Build once so localStorage and the cloud-sync file get a byte-identical blob (same
-  // `syncedAt`) — otherwise the file always looks "newer" and triggers a needless re-adopt.
-  const json = buildStateJson();
   try {
-    localStorage.setItem('portfolio-dashboard-template', json);
+    localStorage.setItem('portfolio-dashboard-template', buildStateJson());
   } catch (e) {
     console.error('saveState failed:', e);
     showUndoToast('⚠ Could not save — browser storage is full. Download a Backup, then remove some chart screenshots.');
   }
-  cloudSyncWrite(json);
 }
 
 function buildStateJson() {
@@ -2394,8 +2449,8 @@ function buildStateJson() {
     nextPrivateAssetId, nextPrivateCashId,
     airdrops, nextAirdropId,
     activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode,
-    historyWindow, historyLogScale,
-    syncedAt: Date.now() // last-write-wins marker for cloud sync (see CLOUD SYNC section)
+    historyWindow, historyLogScale, paletteVersion: PALETTE_VERSION,
+    savedAt: Date.now() // informational only — tells two same-day backup files apart
   });
 }
 
@@ -2435,9 +2490,6 @@ function importBackup(input) {
     if (data.privateTabEnabled === undefined && ((data.privateAssets || []).length || (data.privateCash || []).length)) {
       data.privateTabEnabled = true;
     }
-    // Stamp it as the newest state there is, or cloud sync will treat the restore as stale
-    // and pull the old file back over it on the very next check.
-    data.syncedAt = Date.now();
     if (!confirm(`Restore backup "${file.name}"?\n\nThis replaces EVERYTHING currently in the dashboard with the backup's contents.\n\nOnly restore files you created yourself.`)) return;
     try {
       localStorage.setItem('portfolio-dashboard-template', JSON.stringify(data));
@@ -2448,392 +2500,6 @@ function importBackup(input) {
     location.reload();
   };
   reader.readAsText(file);
-}
-
-// ── CLOUD SYNC (private: binds to a JSON file in the user's own cloud folder) ──────
-// Uses the File System Access API to auto-write state to one file the user picks (in
-// iCloud/OneDrive/Dropbox). Data never touches a third-party server. Last-write-wins by
-// the `syncedAt` marker. Everything here is feature-detected — on a browser without the
-// API (or in the Node test harness) it's a complete no-op and the button stays hidden.
-const SYNC_KEY = 'portfolio-dashboard-template';
-let cloudSyncHandle = null;
-let cloudSyncState = 'off'; // 'off' | 'connected' | 'reconnect' | 'error' | 'unsupported'
-let _cloudWriteTimer = null;
-let _pendingCloudJson = null;
-// Write gate. Stays false until we have positively established what the sync file holds
-// (adopted it, or read it and confirmed ours is newer). Writing before that is how a
-// second device silently clobbers the first: the file may simply not be downloaded yet,
-// and an empty/failed read must never be mistaken for "the file is stale, overwrite it".
-let cloudSyncReady = false;
-
-const cloudSupported = () => typeof window !== 'undefined' && !!window.showSaveFilePicker && !!window.showOpenFilePicker && !!window.indexedDB;
-
-// Pure last-write-wins decision — extracted so it's unit-testable without the file APIs.
-function shouldAdoptRemote(localSyncedAt, remoteSyncedAt) {
-  return (remoteSyncedAt || 0) > (localSyncedAt || 0);
-}
-
-// A cloud provider that hits a conflict renames our file ("conflicted copy") and leaves a
-// different file at the old name. The handle follows the rename, so the device keeps
-// happily writing to a file nobody else reads while the badge still says "Synced". The
-// file name is the one thing we can check cheaply — pure, so it's unit-testable.
-function syncFileRenamed(savedName, currentName) {
-  return !!savedName && !!currentName && savedName !== currentName;
-}
-
-// Tiny IndexedDB key-value store (localStorage can't hold a FileSystemFileHandle).
-function idbOpen() {
-  return new Promise((res, rej) => {
-    const r = indexedDB.open('pdash-sync', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('kv');
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  });
-}
-function idbReq(mode, fn) {
-  return idbOpen().then(db => new Promise((res, rej) => {
-    const store = db.transaction('kv', mode).objectStore('kv');
-    const req = fn(store);
-    req.onsuccess = () => res(req.result);
-    req.onerror = () => rej(req.error);
-  }));
-}
-const idbGet = key => idbReq('readonly',  s => s.get(key));
-const idbSet = (key, val) => idbReq('readwrite', s => s.put(val, key));
-const idbDel = key => idbReq('readwrite', s => s.delete(key));
-
-async function verifyPermission(handle, write) {
-  const opts = { mode: write ? 'readwrite' : 'read' };
-  if ((await handle.queryPermission(opts)) === 'granted') return true;
-  if ((await handle.requestPermission(opts)) === 'granted') return true; // needs a user gesture
-  return false;
-}
-
-// The exact text the file held the last time this device read or wrote it. Comparing
-// against this is how we notice the other machine edited the file — content, not clocks.
-// Two machines never agree on Date.now(), and a Mac running a minute behind would have
-// every edit judged "older" and silently dropped.
-let _lastFileSeen = null;
-let _lastReadText = null;
-
-async function cloudReadFile() {
-  const file = await cloudSyncHandle.getFile();
-  const text = await file.text();
-  _lastReadText = text;
-  if (!text.trim()) return null;
-  const data = JSON.parse(text);
-  return (data && Array.isArray(data.portfolio)) ? data : null;
-}
-
-// True when the file changed underneath us since we last read or wrote it.
-function cloudFileChangedUnderUs(currentText) {
-  return _lastFileSeen !== null && currentText !== _lastFileSeen;
-}
-
-// The state minus everything that changes by itself. A price refresh is not an edit, and
-// must not count as "this device has newer data": `fetchPrices()` runs every 60s and calls
-// `saveState()`, so an idle open tab used to bump `syncedAt` and rewrite the file once a
-// minute. Whichever machine merely had the tab open therefore always won last-write-wins
-// and silently reverted the other machine's real edits — rename the dashboard on the Mac,
-// open Windows, and Windows would stamp the old name back within the minute.
-function cloudSignature(json) {
-  let d;
-  try { d = JSON.parse(json); } catch (_) { return json; }
-  delete d.syncedAt;
-  delete d.fxRates; delete d.fxLastUpdated; delete d.fxSource;
-  const stripPrices = arr => {
-    if (Array.isArray(arr)) arr.forEach(x => { if (x && typeof x === 'object') delete x.currentPrice; });
-  };
-  stripPrices(d.portfolio); stripPrices(d.privateAssets);
-  return JSON.stringify(d);
-}
-let _lastCloudSignature = null;
-
-// Debounced write of the exact JSON already saved to localStorage.
-function cloudSyncWrite(json) {
-  if (cloudSyncState !== 'connected' || !cloudSyncHandle || !cloudSyncReady) return;
-  const sig = cloudSignature(json);
-  if (sig === _lastCloudSignature) return; // nothing a human changed — leave the file alone
-  _lastCloudSignature = sig;
-  _pendingCloudJson = json;
-  clearTimeout(_cloudWriteTimer);
-  _cloudWriteTimer = setTimeout(cloudFlushWrite, 1200);
-}
-
-// The whole write, separated out so a tab going away can push the last edit out before it
-// dies: the 1.2s debounce used to swallow an edit made just before closing the tab.
-async function cloudFlushWrite() {
-  clearTimeout(_cloudWriteTimer);
-  _cloudWriteTimer = null;
-  const json = _pendingCloudJson;
-  _pendingCloudJson = null;
-  if (!json || cloudSyncState !== 'connected' || !cloudSyncHandle || !cloudSyncReady) return;
-  try {
-    // Read before write, always. visibilitychange never fires for a tab that never lost
-    // focus, so this is the only check that catches an edit made on the other machine
-    // while this one simply sat there.
-    let remote = null;
-    try { remote = await cloudReadFile(); } catch (e) { console.warn('cloud sync read failed:', e); }
-    if (!remote) {
-      cloudSyncReady = false;
-      _lastCloudSignature = null; // this state still needs writing - let a retry through
-      cloudSyncState = 'error';
-      updateCloudSyncBtn();
-      showUndoToast('⚠ Sync file could not be read — nothing was saved to it. Click Sync Error to retry');
-      return;
-    }
-    if (cloudFileChangedUnderUs(_lastReadText)) {
-      // Both machines edited. Last-write-wins cannot merge, so never pick a side silently.
-      const when = remote.syncedAt ? new Date(remote.syncedAt).toLocaleString() : 'since you last looked';
-      if (!confirm(`Your other device changed the sync file (saved ${when}).\n\nOK — keep THIS device's version and overwrite the file.\n\nCancel — load the other device's version instead (what you just changed here is lost).`)) {
-        cloudSyncReady = false;
-        _lastCloudSignature = null;
-        localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
-        _lastFileSeen = _lastReadText;
-        showUndoToast('Loaded your other device’s version ✓');
-        setTimeout(() => location.reload(), 700);
-        return;
-      }
-    }
-    const w = await cloudSyncHandle.createWritable();
-    await w.write(json);
-    await w.close();
-    _lastFileSeen = json;
-  } catch (e) {
-    // A silent failure here used to leave the button reading "Synced ✓" while nothing
-    // was being written — the badge has to tell the truth.
-    console.warn('cloud sync write failed:', e);
-    cloudSyncReady = false;
-    _lastCloudSignature = null; // this state still needs writing - let a retry through
-    cloudSyncState = 'error';
-    updateCloudSyncBtn();
-    showUndoToast('⚠ Could not write to your sync file — click Sync Error to reconnect');
-  }
-}
-
-// On open, reconnect, or refocus: read the file and decide what to do. Returns
-// 'adopted' | 'local-newer' | 'unreadable'. Only the first two mean we actually know what
-// the file holds, and only then is writing unlocked. An unreadable file is NOT permission
-// to overwrite it: a Dropbox/iCloud placeholder that has not finished downloading reads as
-// empty, and treating that as "the file is stale" is exactly how one device wipes another.
-async function cloudMaybeAdoptRemote() {
-  let remote;
-  try {
-    remote = await cloudReadFile();
-  } catch (e) {
-    console.warn('cloud sync read failed:', e);
-    cloudSyncReady = false;
-    _lastCloudSignature = null;
-    return 'unreadable';
-  }
-  if (!remote) { cloudSyncReady = false; _lastCloudSignature = null; return 'unreadable'; }
-  const localSyncedAt = (JSON.parse(localStorage.getItem(SYNC_KEY) || '{}')).syncedAt || 0;
-  if (shouldAdoptRemote(localSyncedAt, remote.syncedAt)) {
-    cloudSyncReady = false; // hold writes; the reloaded page re-establishes them from scratch
-    _lastCloudSignature = null;
-    _lastFileSeen = _lastReadText;
-    localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
-    showUndoToast('Loaded newer data from your cloud sync ✓');
-    setTimeout(() => location.reload(), 700);
-    return 'adopted';
-  }
-  cloudSyncReady = true; // read succeeded and ours is newer — safe to write
-  _lastFileSeen = _lastReadText;
-  // Converge now rather than waiting for the next edit: after a Restore, or a session that
-  // ended offline, this device holds newer data the file has never seen.
-  const localJson = localStorage.getItem(SYNC_KEY);
-  if (localJson) cloudSyncWrite(localJson);
-  return 'local-newer';
-}
-
-// Shared tail for the three entry points that re-check the file. Flips the button to the
-// honest 'error' state when the file could not be read, instead of showing "Synced ✓".
-async function cloudRecheck(quiet) {
-  const outcome = await cloudMaybeAdoptRemote();
-  if (outcome === 'unreadable') {
-    cloudSyncState = 'error';
-    updateCloudSyncBtn();
-    if (!quiet) showUndoToast('⚠ Sync file could not be read — still downloading? Click Sync Error to retry');
-  }
-  return outcome;
-}
-
-async function initCloudSync() {
-  if (!cloudSupported()) { cloudSyncState = 'unsupported'; updateCloudSyncBtn(); return; }
-  let handle = null;
-  try { handle = await idbGet('syncHandle'); } catch (_) {}
-  if (!handle) { cloudSyncState = 'off'; updateCloudSyncBtn(); return; }
-  cloudSyncHandle = handle;
-  let savedName = null;
-  try { savedName = await idbGet('syncName'); } catch (_) {}
-  if (syncFileRenamed(savedName, handle.name)) {
-    // Dropbox/iCloud renamed our file to a "conflicted copy" and put a different file at
-    // the old name. Keep writing and this device talks only to itself.
-    cloudSyncState = 'error';
-    updateCloudSyncBtn();
-    showUndoToast('⚠ Your sync file was renamed by your cloud folder (conflicted copy?) — click Sync Error to pick it again');
-    return;
-  }
-  let perm = 'prompt';
-  try { perm = await handle.queryPermission({ mode: 'readwrite' }); } catch (_) {}
-  if (perm === 'granted') {
-    cloudSyncState = 'connected';
-    updateCloudSyncBtn();
-    await cloudRecheck(false);
-  } else {
-    // Chromium drops read-write grants across sessions — needs one click to re-authorize.
-    cloudSyncState = 'reconnect';
-    updateCloudSyncBtn();
-    showUndoToast('Cloud sync is paused — click Reconnect Sync to resume saving to your file');
-  }
-}
-
-// One entry point, and the safe one is the default. Clicking Cloud Sync opens a file
-// picker straight away: point it at the sync file another device already made. Only if
-// you cancel that picker do we offer to create a new one.
-//
-// The two pickers must never be one mis-click apart. `showSaveFilePicker` TRUNCATES the
-// file it is pointed at, so "create" pointed at an existing sync file empties it and
-// writes this device's state over everything the other device had. That used to sit
-// behind Cancel on a confirm() — and Cancel is what everyone presses to mean "no".
-// Cancel now always means "stop, change nothing".
-async function connectCloudSync() {
-  const outcome = await joinCloudSync();
-  if (outcome !== 'cancelled') return;
-  if (confirm('No sync file selected.\n\nOK — create a NEW sync file (do this on the FIRST device only; it overwrites the file you point it at).\n\nCancel — stop, change nothing.')) {
-    await createCloudSync();
-  }
-}
-
-// Connect to a file another device already made. This path NEVER writes: it reads the
-// file, and either adopts it or leaves everything alone.
-async function joinCloudSync() {
-  let handle;
-  try {
-    [handle] = await window.showOpenFilePicker({
-      multiple: false,
-      types: [{ description: 'Dashboard sync file', accept: { 'application/json': ['.json'] } }],
-    });
-  } catch (e) {
-    if (e.name !== 'AbortError') console.warn('cloud sync join failed:', e);
-    return 'cancelled';
-  }
-  try {
-    if (!(await verifyPermission(handle, true))) return 'cancelled';
-    cloudSyncHandle = handle;
-    let remote = null;
-    try { remote = await cloudReadFile(); } catch (e) { console.warn('cloud sync read failed:', e); }
-    if (!remote) {
-      // The file exists but will not read — nearly always a cloud placeholder that has
-      // not finished downloading. Writing to it here is how one device wipes another.
-      cloudSyncHandle = null;
-      cloudSyncReady = false; // an unreadable file never opens the write gate
-      showUndoToast('⚠ That file could not be read — let your cloud folder finish downloading it, then try again');
-      return 'unreadable';
-    }
-    const when = remote.syncedAt ? new Date(remote.syncedAt).toLocaleString() : 'an earlier time';
-    if (!confirm(`This sync file was last saved ${when} and holds ${remote.portfolio.length} open position(s).\n\nOK — load it onto THIS device (replaces what is on this device).\n\nCancel — stop, change nothing.`)) {
-      cloudSyncHandle = null;
-      return 'declined';
-    }
-    cloudSyncReady = false; // the reloaded page re-establishes the gate from scratch
-    _lastFileSeen = _lastReadText;
-    localStorage.setItem(SYNC_KEY, JSON.stringify(remote));
-    await cloudRemember(handle);
-    showUndoToast('Cloud sync connected — loading synced data ✓');
-    setTimeout(() => location.reload(), 700);
-    return 'adopted';
-  } catch (e) {
-    console.warn('cloud sync join failed:', e);
-    cloudSyncHandle = null;
-    return 'error';
-  }
-}
-
-// Make a fresh sync file for this dashboard. A save picker is right here: the file is new.
-async function createCloudSync() {
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: 'portfolio-dashboard-sync.json',
-      types: [{ description: 'Dashboard sync file', accept: { 'application/json': ['.json'] } }],
-    });
-    if (!(await verifyPermission(handle, true))) return;
-    cloudSyncHandle = handle;
-    await cloudPushLocal(handle);
-  } catch (e) {
-    if (e.name !== 'AbortError') console.warn('cloud sync create failed:', e);
-  }
-}
-
-// Push this device's state into the file and open the gate — we wrote it, so we know
-// exactly what it holds.
-async function cloudPushLocal(handle) {
-  const json = buildStateJson();
-  _lastCloudSignature = cloudSignature(json);
-  _lastFileSeen = json; // we are about to write exactly this
-  localStorage.setItem(SYNC_KEY, json);
-  const w = await handle.createWritable();
-  await w.write(json);
-  await w.close();
-  await cloudRemember(handle);
-  cloudSyncReady = true;
-  cloudSyncState = 'connected';
-  updateCloudSyncBtn();
-  showUndoToast('Cloud sync connected ✓ — changes now auto-save to your file');
-}
-
-// Persist the handle plus the file name we expect it to keep pointing at.
-async function cloudRemember(handle) {
-  // Losing the handle to a failed IndexedDB write must not abort an adopt that has already
-  // landed in localStorage: the data is correct either way, and the worst case is the
-  // button reading "Cloud Sync" again after the reload, which is visible and fixable.
-  try {
-    await idbSet('syncHandle', handle);
-    await idbSet('syncName', handle.name);
-  } catch (e) {
-    console.warn('could not persist the sync handle:', e);
-  }
-}
-
-async function reconnectCloudSync() {
-  if (!cloudSyncHandle) { cloudSyncState = 'off'; updateCloudSyncBtn(); return; }
-  if (!(await verifyPermission(cloudSyncHandle, true))) return;
-  cloudSyncState = 'connected';
-  updateCloudSyncBtn();
-  await cloudRecheck(false);
-  if (cloudSyncState === 'connected') showUndoToast('Cloud sync reconnected ✓');
-}
-
-async function disconnectCloudSync() {
-  if (!confirm('Turn off cloud sync on this device?\n\nYour data stays in the file and in this browser — changes just stop auto-saving to the file.')) return;
-  cloudSyncHandle = null;
-  cloudSyncState = 'off';
-  cloudSyncReady = false;
-  try { await idbDel('syncHandle'); await idbDel('syncName'); } catch (_) {}
-  updateCloudSyncBtn();
-  showUndoToast('Cloud sync turned off on this device');
-}
-
-function cloudSyncButtonClick() {
-  if (cloudSyncState === 'off') connectCloudSync();
-  else if (cloudSyncState === 'reconnect') reconnectCloudSync();
-  else if (cloudSyncState === 'error') joinCloudSync();
-  else if (cloudSyncState === 'connected') disconnectCloudSync();
-}
-
-function updateCloudSyncBtn() {
-  const btn = document.getElementById('cloudSyncBtn');
-  if (!btn) return;
-  if (cloudSyncState === 'unsupported') { btn.style.display = 'none'; return; }
-  btn.style.display = '';
-  const label = document.getElementById('cloudSyncLabel');
-  const labels = { off: 'Cloud Sync', connected: 'Synced ✓', reconnect: 'Reconnect Sync', error: 'Sync Error' };
-  if (label) label.textContent = labels[cloudSyncState] || 'Cloud Sync';
-  btn.classList.toggle('active', cloudSyncState === 'connected');
-  btn.title = cloudSyncState === 'connected' ? 'Auto-syncing to your cloud file — click to turn off on this device'
-    : cloudSyncState === 'reconnect' ? 'Click to re-grant file access and resume syncing'
-    : cloudSyncState === 'error' ? 'Your sync file could not be read or written — nothing is being saved to it. Click to retry.'
-    : 'Sync this dashboard to a file in your own cloud folder (iCloud / OneDrive / Dropbox)';
 }
 
 // ── UNDO ─────────────────────────────────────────────────────────────────────
@@ -3201,6 +2867,8 @@ function updateCash(id, field, value) {
 function cycleColor(posId) {
   const p = portfolio.find(p => p.posId === posId);
   if (!p) return;
+  // A pinned ticker keeps its colour — cycling it would undo the pin on the next render.
+  if (pinnedColor(p.ticker)) { showUndoToast(`${p.ticker}'s colour is pinned`); return; }
   pushUndo('change color');
   const usedColors = new Set(portfolio.filter(x => x.posId !== posId).map(x => x.color));
   const currentIdx = COLOR_PALETTE.findIndex(c => c.color === p.color);
@@ -3896,6 +3564,7 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedInputLabel').textContent = 'Realized P&L to add (USD)';
     document.getElementById('realizedInputHint').textContent = 'Negative = realized loss. Zero = no change.';
     document.getElementById('realizedInput').value = gain.toFixed(2);
+    setRealizedInputPrivacy(true);
     document.getElementById('realizedSellPrice').value = p.currentPrice.toFixed(p.currentPrice >= 1 ? 2 : 4);
     document.getElementById('realizedSellPriceCur').textContent = (p.currency && p.currency !== 'USD') ? '(' + p.currency + ')' : '(USD)';
     document.getElementById('realizedSellPriceRow').style.display = 'block';
@@ -3925,6 +3594,7 @@ function updateUnits(posId, rawVal) {
         return `<option value="${c.id}">${escHtml(c.label)} · ${bal}</option>`;
       }).join('');
     fundSel.value = '';
+    setRealizedInputPrivacy(false); // this one is a price
     document.getElementById('realizedFundRow').style.display = 'block';
     document.getElementById('realizedFundPreview').textContent = '';
     document.getElementById('realizedModal').classList.add('open');
@@ -3943,6 +3613,14 @@ function cancelRealizedModal() {
   document.getElementById('realizedModal').classList.remove('open');
 }
 
+// The realized-modal input holds a USD amount in 'reduce'/'editRealized' mode — mask it in
+// privacy mode. In 'add' mode it holds a buy price, and prices are never masked (same rule
+// as entries and targets).
+function setRealizedInputPrivacy(isAmount) {
+  const el = document.getElementById('realizedInput');
+  if (el) el.classList.toggle('privacy-blur', !!isAmount && privacyMode);
+}
+
 function editRealized(posId) {
   const p = portfolio.find(p => p.posId === posId);
   if (!p) return;
@@ -3954,6 +3632,7 @@ function editRealized(posId) {
   document.getElementById('realizedInputLabel').textContent = 'Realized P&L (USD)';
   document.getElementById('realizedInputHint').textContent = 'Negative = realized loss. Zero = clears it.';
   document.getElementById('realizedInput').value = (p.realizedPnl || 0).toFixed(2);
+  setRealizedInputPrivacy(true);
   document.getElementById('realizedSellPriceRow').style.display = 'none';
   document.getElementById('realizedFundRow').style.display = 'none';
   _logViewPosId = posId;
@@ -4046,6 +3725,7 @@ function toggleLogPastTrade() {
     document.getElementById('lpt-side').value = 'sell';
     document.getElementById('lpt-units').value = '';
     document.getElementById('lpt-price').value = '';
+    document.getElementById('lpt-adjust').checked = true;
     document.getElementById('lpt-error').textContent = '';
   }
 }
@@ -4060,15 +3740,42 @@ function submitPastTrade() {
   const date  = document.getElementById('lpt-date').value || today();
   if (isNaN(units) || units <= 0) { err.textContent = 'Enter valid units.'; return false; }
   if (isNaN(price) || price <= 0) { err.textContent = 'Enter a valid price.'; return false; }
+  // Ticked (the default) the trade moves the position; unticked it is journal-only, for
+  // history the position already reflects. Validate before pushUndo so a rejected entry
+  // leaves no snapshot behind.
+  const adjust = !!(document.getElementById('lpt-adjust') || {}).checked;
+  if (adjust && side === 'sell' && units > p.units) {
+    err.textContent = `Only ${fmtUnits(p.units)} units held — sell that or less, or untick "Adjust the position too".`;
+    return false;
+  }
   pushUndo(`log past ${side} ${p.ticker}`);
   if (!p.tradeLog) p.tradeLog = [];
   const rate = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
+  // Against the entry price as it stands *before* a buy re-averages it.
   const pnlUSD = side === 'sell' ? dirSign(p) * units * (price - p.entryPrice) * rate : null;
   p.tradeLog.push({ date, side, units, price, pnlUSD });
+  if (adjust) {
+    if (side === 'sell') {
+      p.units       = p.units - units;
+      p.realizedPnl = (p.realizedPnl || 0) + pnlUSD;
+    } else {
+      p.entryPrice  = (p.units * p.entryPrice + units * price) / (p.units + units);
+      p.units       = p.units + units;
+    }
+    // Confirm writes this field back over p.realizedPnl, so it has to follow the change
+    // or confirming right after a logged sell would silently undo the booking.
+    const realizedInput = document.getElementById('realizedInput');
+    if (realizedInput) realizedInput.value = (p.realizedPnl || 0).toFixed(2);
+  }
   saveState();
   document.getElementById('logPastTradeForm').style.display = 'none';
   renderRealizedLog(p);
-  renderTable(computeAll());
+  renderAll(); // units and realized P&L move the row, the summary cards and the allocation bars
+  if (adjust) {
+    showUndoToast(side === 'sell'
+      ? `Logged & sold ${fmtUnits(units)} ${p.ticker} — ${p.units > 0 ? fmtUnits(p.units) + ' left' : 'position now empty'}`
+      : `Logged & bought ${fmtUnits(units)} ${p.ticker} — now ${fmtUnits(p.units)}`);
+  }
   return true;
 }
 
@@ -4383,8 +4090,7 @@ function submitPhysicalAsset() {
   const purchase = hasCostBasis ? purchRaw : value;
 
   const ticker = derivePhysicalTicker(name);
-  const usedColors = new Set(portfolio.map(p => p.color));
-  const { color, bg } = COLOR_PALETTE.find(c => !usedColors.has(c.color)) || COLOR_PALETTE[portfolio.length % COLOR_PALETTE.length];
+  const { color, bg } = nextColorFor(ticker);
 
   pushUndo(`add ${name}`);
   portfolio.push({ name, ticker, sector, units: 1, entryPrice: purchase, currentPrice: value, targetPrice: null, invalidationPrice: null, currency, color, bg, thesis: '', leveraged: false, marginUSD: null, showThesis: false, coingeckoId: null, yahooTicker: null, direction: null, physical: true, hasCostBasis, openedDate: today(), posId: nextPosId++ });
@@ -4430,10 +4136,7 @@ function submitAddAsset() {
   if (leveraged && (isNaN(marginUSD) || marginUSD <= 0)) { err.textContent = 'Enter a valid margin amount.'; return; }
 
   const existing = portfolio.find(p => p.ticker === ticker);
-  const usedColors = new Set(portfolio.map(p => p.color));
-  const { color, bg } = existing
-    ? { color: existing.color, bg: existing.bg }
-    : (COLOR_PALETTE.find(c => !usedColors.has(c.color)) || COLOR_PALETTE[portfolio.length % COLOR_PALETTE.length]);
+  const { color, bg } = existing ? { color: existing.color, bg: existing.bg } : nextColorFor(ticker);
   const targetRaw = parseFloat(document.getElementById('f-target').value);
   const targetPrice = (!isNaN(targetRaw) && targetRaw > 0) ? targetRaw : null;
   const invRaw = parseFloat(document.getElementById('f-invalidation').value);
@@ -6644,17 +6347,6 @@ if (activeTab !== 'portfolio') switchTab(activeTab);
 updateClock();
 setInterval(updateClock, 1000);
 setInterval(fetchPrices, 60000);
-initCloudSync(); // restores a previously-connected cloud-sync file (no-op if unsupported/none)
-
-// A tab left open on one machine goes stale as soon as the other machine writes. Re-check
-// the file when the tab comes back to the front, so a stale tab adopts the newer data
-// instead of quietly overwriting it with whatever was on screen an hour ago. Quiet mode:
-// a backgrounded tab failing a read is not worth a toast.
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && cloudSyncState === 'connected') cloudRecheck(true);
-  // Leaving: get the pending edit out now rather than letting the debounce die with the tab.
-  if (document.visibilityState === 'hidden' && _pendingCloudJson) cloudFlushWrite();
-});
 </script>
 </body>
 </html>
