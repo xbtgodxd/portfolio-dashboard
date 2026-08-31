@@ -1269,7 +1269,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <button class="hist-range-btn" id="histRange-5y"  onclick="setHistoryWindow('5y')">5Y</button>
         <button class="hist-range-btn" id="histRange-all" onclick="setHistoryWindow('all')">All</button>
       </div>
-      <button class="edit-btn" id="histLogBtn" onclick="toggleHistoryLog()" title="Log scale — lets a 30x and a 3x share one axis. Months with a zero or negative net worth can't be plotted on a log axis and show as gaps.">log</button>
+      <button class="edit-btn" id="histLogBtn" onclick="toggleHistoryLog()" title="Log scale — lets a 30x and a 3x share one axis. Months with a zero or negative net worth have no place on a log axis; they are shaded and left blank.">log</button>
       <button class="edit-btn" id="btcCompareBtn" onclick="toggleBtcCompare()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L12 6M12 18L12 22M4.93 4.93L7.76 7.76M16.24 16.24L19.07 19.07M2 12L6 12M18 12L22 12M4.93 19.07L7.76 16.24M16.24 7.76L19.07 4.93"/></svg>
         vs BTC
@@ -1283,6 +1283,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
   <div class="history-chart-card">
     <div id="historyDemoHint" style="display:none;font-size:11px;color:var(--text3);margin-bottom:10px">Showing <b style="color:var(--amber)">demo data</b> — it disappears the moment you log your own first snapshot via <b style="color:var(--cyan)">Add Entry</b>.</div>
     <div style="position:relative;height:300px"><canvas id="historyChartCanvas"></canvas></div>
+    <div id="historyLogNote" style="display:none;font-size:11px;color:var(--text3);margin-top:10px;line-height:1.5"></div>
   </div>
   <div class="history-entries-wrap">
     <div class="history-entries-scroll" id="historyEntries"></div>
@@ -2285,10 +2286,12 @@ function chartTheme() {
     ? { text: '#0d1220', body: '#333d52', muted: '#5f6a84', grid: '#c8cfdd',
         tooltipBg: '#ffffff', tooltipBorder: '#a8b2c9', pageBg: '#dfe3ec',
         labelBg: 'rgba(255,255,255,0.85)', labelText: 'rgba(13,18,32,0.95)', divider: 'rgba(20,26,42,0.55)',
+        negBand: 'rgba(195,27,46,0.10)', negEdge: 'rgba(195,27,46,0.35)', negText: 'rgba(195,27,46,0.85)',
         accent: '#015d8c', accent2: '#5c2fc4', accentFillTop: 'rgba(1,93,140,0.22)', accentFillBottom: 'rgba(1,93,140,0.0)' }
     : { text: '#e8edf5', body: '#8892a8', muted: '#4a5268', grid: '#1a1a35',
         tooltipBg: '#10101f', tooltipBorder: '#252548', pageBg: '#07070f',
         labelBg: 'rgba(7,7,15,0.65)', labelText: 'rgba(255,255,255,0.9)', divider: 'rgba(255,255,255,0.5)',
+        negBand: 'rgba(255,71,87,0.10)', negEdge: 'rgba(255,71,87,0.30)', negText: 'rgba(255,71,87,0.80)',
         accent: '#00d4ff', accent2: '#8b5cf6', accentFillTop: 'rgba(0,212,255,0.25)', accentFillBottom: 'rgba(0,212,255,0.0)' };
 }
 
@@ -4895,12 +4898,24 @@ function rebaseBaseIndex(values) {
   return values.findIndex(v => typeof v === 'number' && isFinite(v) && v > 0);
 }
 
+// One baseline for the whole comparison. Letting each line find its own used to mean
+// net worth could start at 1x in a *later* month than BTC — the lines no longer shared
+// an origin, so the vertical distance between them stopped meaning "beat BTC" and the
+// chart quietly lied. Every drawn line now rebases off the first month where they all
+// have a positive value; months before it are gaps on every line, together.
+function sharedBaseIndex(seriesList) {
+  const usable = v => typeof v === 'number' && isFinite(v) && v > 0;
+  const n = seriesList.reduce((m, s) => Math.max(m, s.length), 0);
+  for (let i = 0; i < n; i++) if (seriesList.every(s => usable(s[i]))) return i;
+  return -1;
+}
+
 // Percent change from the baseline — the spaghetti-chart form, every line starting
 // together at 0% so vertical distance between them is relative performance.
 // Negative values *after* the baseline are kept: -174% is a real, meaningful point.
-function rebaseToPct(values) {
-  const i = rebaseBaseIndex(values);
-  if (i === -1) return values.map(() => null);
+function rebaseToPct(values, baseIdx) {
+  const i = baseIdx === undefined ? rebaseBaseIndex(values) : baseIdx;
+  if (i === -1 || !(values[i] > 0)) return values.map(() => null);
   const base = values[i];
   return values.map((v, k) =>
     (k >= i && typeof v === 'number' && isFinite(v)) ? (v / base - 1) * 100 : null);
@@ -4909,9 +4924,9 @@ function rebaseToPct(values) {
 // Growth multiple from the baseline (1 = flat). This is what the log axis plots:
 // a log scale cannot render 0% (the baseline itself) or anything below it, so the
 // series has to be expressed as a ratio, and non-positive months drop out as gaps.
-function rebaseToMult(values) {
-  const i = rebaseBaseIndex(values);
-  if (i === -1) return values.map(() => null);
+function rebaseToMult(values, baseIdx) {
+  const i = baseIdx === undefined ? rebaseBaseIndex(values) : baseIdx;
+  if (i === -1 || !(values[i] > 0)) return values.map(() => null);
   const base = values[i];
   return values.map((v, k) =>
     (k >= i && typeof v === 'number' && isFinite(v) && v > 0) ? v / base : null);
@@ -5030,6 +5045,10 @@ function renderHistorySection() {
   const fmtDkk = fmtHomeAmt;
   const showLegend = hasWithdrawals || btcCompareMode;
   let datasets, yTickCb, tooltipLabelCb;
+  // Months a log axis physically cannot draw (net worth <= 0). Shaded rather than
+  // silently skipped, so a break in the line reads as history and not as a bug.
+  let underwater = [];
+  let logBounds = {};
 
   if (btcCompareMode && chartRows.length) {
     // Spaghetti mode: every line rebased to % change from the first snapshot on one
@@ -5039,9 +5058,15 @@ function renderHistorySection() {
     // all. No dollar amounts appear in this mode, on the axis or in the tooltip.
     // Log plots growth multiples (1 = flat); linear plots % change (0 = flat).
     const rebase = logMode ? rebaseToMult : rebaseToPct;
-    const nwPct  = rebase(chartRows.map(d => d.value));
-    const adjPct = rebase(adjustedData);
-    const btcPct = rebase(chartRows.map(d => btcPriceCache[d.date] ?? null));
+    const nwRaw  = chartRows.map(d => d.value);
+    const btcRaw = chartRows.map(d => btcPriceCache[d.date] ?? null);
+    // Only the lines actually drawn get a say in where the shared baseline lands —
+    // the adjusted series must not hold the origin hostage when it isn't on screen.
+    const baseIdx = sharedBaseIndex(hasWithdrawals ? [nwRaw, adjustedData, btcRaw] : [nwRaw, btcRaw]);
+    const nwPct  = rebase(nwRaw, baseIdx);
+    const adjPct = rebase(adjustedData, baseIdx);
+    const btcPct = rebase(btcRaw, baseIdx);
+    if (logMode) underwater = chartRows.map((d, i) => d.value > 0 ? -1 : i).filter(i => i >= 0);
     const pts = chartRows.length > 36 ? 0 : 3;
     datasets = [
       { label: 'Net Worth', data: nwPct, fill: false, borderColor: th.accent, borderWidth: 2, pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: th.accent, tension: 0.3 },
@@ -5050,12 +5075,25 @@ function renderHistorySection() {
     ];
     // Percentages are deliberately not masked by privacyMode — same rule as everywhere
     // else in the app: amounts are hidden, relative performance is not.
+    // A log axis auto-fitted to the data puts the lowest point exactly on the floor,
+    // where the spline's overshoot gets clipped flat. Give it a sliver of a decade.
+    if (logMode) {
+      const drawn = datasets.flatMap(d => d.data).filter(v => typeof v === 'number' && v > 0);
+      if (drawn.length) logBounds = { min: Math.min(...drawn) / 1.35, max: Math.max(...drawn) * 1.35 };
+    }
     yTickCb = logMode ? (v => fmtMult(v)) : (v => fmtPctSigned(v, 0));
     // The tooltip always speaks percent, on either axis — that's the number you want
     // when comparing, and it saves reading a log axis in your head.
     tooltipLabelCb = ctx => {
       const v = ctx.raw;
-      if (typeof v !== 'number') return `  ${ctx.dataset.label}: —`;
+      if (typeof v !== 'number') {
+        // A blank on the log axis has a reason; say which one rather than a bare dash.
+        const raw = ctx.dataset.label === 'Net Worth'           ? chartRows[ctx.dataIndex]?.value
+                  : ctx.dataset.label === 'Withdrawal-adjusted' ? adjustedData[ctx.dataIndex]
+                  : null;
+        if (logMode && typeof raw === 'number' && raw <= 0) return `  ${ctx.dataset.label}: underwater`;
+        return `  ${ctx.dataset.label}: —`;
+      }
       return `  ${ctx.dataset.label}: ${fmtPctSigned(logMode ? (v - 1) * 100 : v, 1)}`;
     };
   } else {
@@ -5067,10 +5105,54 @@ function renderHistorySection() {
     tooltipLabelCb = ctx => `  ${ctx.dataset.label}: ${fmtUsd(ctx.raw)}`;
   }
 
+  // Shade the months the log axis had to drop, so the break in the line is visibly
+  // "you were underwater here" rather than "the chart stopped working".
+  const underwaterBand = {
+    id: 'underwaterBand',
+    beforeDatasetsDraw(chart) {
+      if (!underwater.length) return;
+      const { ctx, chartArea: area, scales: { x } } = chart;
+      if (!area || !x) return;
+      const n = chartRows.length;
+      const step = n > 1 ? (x.getPixelForValue(n - 1) - x.getPixelForValue(0)) / (n - 1) : area.right - area.left;
+      // Contiguous underwater months shade as one band, not as a row of stripes.
+      const runs = [];
+      underwater.forEach(i => {
+        const last = runs[runs.length - 1];
+        if (last && i === last[1] + 1) last[1] = i; else runs.push([i, i]);
+      });
+      ctx.save();
+      runs.forEach(([a, b]) => {
+        const l = Math.max(area.left,  x.getPixelForValue(a) - step / 2);
+        const r = Math.min(area.right, x.getPixelForValue(b) + step / 2);
+        if (r <= l) return;
+        ctx.fillStyle = th.negBand;
+        ctx.fillRect(l, area.top, r - l, area.bottom - area.top);
+        ctx.strokeStyle = th.negEdge;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(l + 0.5, area.top); ctx.lineTo(l + 0.5, area.bottom);
+        ctx.moveTo(r - 0.5, area.top); ctx.lineTo(r - 0.5, area.bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (r - l >= 52) {
+          ctx.fillStyle = th.negText;
+          ctx.font = "9px 'JetBrains Mono', monospace";
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText('underwater', (l + r) / 2, area.bottom - 4);
+        }
+      });
+      ctx.restore();
+    }
+  };
+
   if (historyChartInstance) historyChartInstance.destroy();
   historyChartInstance = new Chart(canvas, {
     type: 'line',
     data: { labels: chartRows.map(d => fmtHistoryDate(d.date)), datasets },
+    plugins: [underwaterBand],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -5108,7 +5190,7 @@ function renderHistorySection() {
           border: { color: th.grid }
         },
         y: {
-          ...(logMode ? { type: 'logarithmic' } : {}),
+          ...(logMode ? { type: 'logarithmic', ...logBounds } : {}),
           grid: {
             // In vs-BTC mode the flat line is the one that matters — 0% on the linear
             // axis, 1x on the log one. Draw it brighter than the rest of the grid.
@@ -5120,6 +5202,29 @@ function renderHistorySection() {
       }
     }
   });
+
+  // Spell out what the log axis had to leave out. Without this the gap looks like a
+  // rendering fault; the months are real history, they just have no place on a log axis.
+  const logNote = document.getElementById('historyLogNote');
+  if (logNote) {
+    if (underwater.length) {
+      const runs = [];
+      underwater.forEach(i => {
+        const last = runs[runs.length - 1];
+        if (last && i === last[1] + 1) last[1] = i; else runs.push([i, i]);
+      });
+      const spans = runs.map(([a, b]) => a === b
+        ? fmtHistoryDate(chartRows[a].date)
+        : `${fmtHistoryDate(chartRows[a].date)} – ${fmtHistoryDate(chartRows[b].date)}`).join(', ');
+      const n = underwater.length;
+      logNote.innerHTML = `<span style="color:var(--red)">▧</span> ${n} shaded month${n === 1 ? '' : 's'} ` +
+        `(${spans}) had a zero or negative net worth. A log axis has no room below zero, so ` +
+        `${n === 1 ? 'it is' : 'they are'} left blank — turn <b>log</b> off to see ${n === 1 ? 'it' : 'them'} plotted as a percentage.`;
+      logNote.style.display = '';
+    } else {
+      logNote.style.display = 'none';
+    }
+  }
 
   // Entry list (newest first)
   const entriesEl = document.getElementById('historyEntries');
