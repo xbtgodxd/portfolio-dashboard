@@ -1164,6 +1164,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       Restore
     </button>
     <input type="file" id="importFileInput" accept=".json,application/json" style="display:none" onchange="importBackup(this)" />
+    <button class="undo-btn" id="syncBtn" onclick="showSyncModal()" title="Sync this dashboard with your other computer">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.6-4.2"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.6 4.2"/><polyline points="19.6 3.2 19.6 7.2 15.6 7.2"/><polyline points="4.4 20.8 4.4 16.8 8.4 16.8"/></svg>
+      Sync
+    </button>
     <button class="private-toggle-btn" id="privateToggleBtn" onclick="togglePrivateTab()" title="Show/hide the Private tab">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       Private Tab
@@ -1619,6 +1623,73 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="form-actions">
       <button class="btn-secondary" onclick="hideHistoryModal()">Cancel</button>
       <button class="btn-primary" id="historyModalSubmitBtn" onclick="submitHistoryEntry()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- CLOUD SYNC MODAL -->
+<div class="modal-overlay" id="syncModal" onclick="if(event.target===this)hideSyncModal()">
+  <div class="modal" style="width:520px">
+    <div class="modal-header">
+      <div class="modal-title">Sync across computers</div>
+      <button class="modal-close" onclick="hideSyncModal()">&#10005;</button>
+    </div>
+
+    <div id="syncSetup">
+      <div style="font-size:12px;color:var(--text2);line-height:1.65;margin-bottom:16px">
+        Your data lives in this browser only, so a second computer starts empty. This keeps the two in
+        step through a <b>secret gist</b> &mdash; a private file parked on your GitHub account. Nobody can
+        find it without the link, and every save is kept as a version you can roll back to.
+        <div style="margin-top:12px;padding-left:2px">
+          <b>1.</b> Go to <a href="https://gist.github.com" target="_blank" rel="noopener" style="color:var(--cyan)">gist.github.com</a>.
+          Put <code style="color:var(--amber)">portfolio-dashboard.json</code> in the filename box, type
+          <code style="color:var(--amber)">{}</code> in the big box, then click
+          <b>Create secret gist</b>.<br>
+          <b>2.</b> Look at the address bar. The long code after your username is the <b>Gist ID</b>. Copy it.<br>
+          <b>3.</b> Go to <a href="https://github.com/settings/tokens/new?scopes=gist&description=Portfolio%20Dashboard%20sync" target="_blank" rel="noopener" style="color:var(--cyan)">this token page</a>
+          (already filled in). Set Expiration to <b>No expiration</b>, check that <b>gist</b> is the only
+          box ticked, and click <b>Generate token</b>. Copy the token &mdash; GitHub shows it once.<br>
+          <b>4.</b> Paste both below. Repeat steps 3&ndash;4 on your other computer with the <i>same</i> Gist ID.
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Gist ID</label>
+        <input class="form-input" id="sync-gistid" placeholder="e.g. 3f9c1a7e2b4d6f8a0c1e3d5b7a9f2e4c" spellcheck="false" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Access token</label>
+        <input class="form-input" id="sync-token" type="password" placeholder="github_pat_... or ghp_..." spellcheck="false" />
+      </div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.5">
+        Both are stored in this browser only. They are never put in a Backup file and never leave your machine
+        except to talk to GitHub.
+      </div>
+      <div class="form-error" id="sync-error"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="hideSyncModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveSyncSettings()">Save</button>
+      </div>
+    </div>
+
+    <div id="syncReady" style="display:none">
+      <div style="font-size:12px;color:var(--text2);line-height:1.65;margin-bottom:6px">
+        <b>Send</b> when you have just changed something here. <b>Get</b> when you sat down at this computer
+        and the other one has the newer data. Nothing happens on its own &mdash; you decide, every time.
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:16px" id="sync-status"></div>
+      <div style="display:flex;gap:10px;margin-bottom:14px">
+        <button class="btn-primary" style="flex:1" id="sync-push-btn" onclick="doSyncPush(false)">&#8593;&nbsp; Send this computer&rsquo;s data</button>
+        <button class="btn-secondary" style="flex:1" id="sync-pull-btn" onclick="doSyncPull()">&#8595;&nbsp; Get the cloud copy</button>
+      </div>
+      <div class="form-error" id="sync-error2"></div>
+      <div id="sync-conflict" style="display:none;font-size:12px;color:var(--text2);line-height:1.6;border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">
+        <div id="sync-conflict-msg" style="margin-bottom:10px"></div>
+        <button class="btn-secondary" style="font-size:11px" onclick="doSyncPush(true)">Overwrite the cloud copy anyway</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <button class="btn-secondary" style="font-size:11px" onclick="editSyncSettings()">Change setup</button>
+        <button class="btn-secondary" style="font-size:11px" onclick="hideSyncModal()">Close</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2484,29 +2555,276 @@ function importBackup(input) {
       alert('That file could not be read as a backup.');
       return;
     }
-    if (!data || !Array.isArray(data.portfolio)) {
-      alert('That file does not look like a dashboard backup.');
-      return;
-    }
-    // Migration shims for backups made by older dashboard versions:
-    // no historyModified flag + real history entries -> treat the history as user-owned
-    if (data.historyModified === undefined && Array.isArray(data.historyData) && data.historyData.length) {
-      data.historyModified = true;
-    }
-    // private data present but no tab flag -> switch the Private tab on so the data is reachable
-    if (data.privateTabEnabled === undefined && ((data.privateAssets || []).length || (data.privateCash || []).length)) {
-      data.privateTabEnabled = true;
-    }
-    if (!confirm(`Restore backup "${file.name}"?\n\nThis replaces EVERYTHING currently in the dashboard with the backup's contents.\n\nOnly restore files you created yourself.`)) return;
-    try {
-      localStorage.setItem('portfolio-dashboard-template', JSON.stringify(data));
-    } catch (err) {
-      alert('Could not restore — browser storage is full.');
-      return;
-    }
-    location.reload();
+    if (adoptStateObject(data, `Restore backup "${file.name}"?`)) location.reload();
   };
   reader.readAsText(file);
+}
+
+// Shared landing strip for file Restore and cloud Pull: same validation, same migration
+// shims for older backups, same confirm-then-write. Returns false with the reason already
+// on screen, so callers can just bail. It deliberately does NOT reload — the caller does,
+// because the cloud path has a sync marker to persist first.
+function adoptStateObject(data, confirmTitle) {
+  if (!data || !Array.isArray(data.portfolio)) {
+    alert('That does not look like a dashboard backup.');
+    return false;
+  }
+  // Migration shims for backups made by older dashboard versions:
+  // no historyModified flag + real history entries -> treat the history as user-owned
+  if (data.historyModified === undefined && Array.isArray(data.historyData) && data.historyData.length) {
+    data.historyModified = true;
+  }
+  // private data present but no tab flag -> switch the Private tab on so the data is reachable
+  if (data.privateTabEnabled === undefined && ((data.privateAssets || []).length || (data.privateCash || []).length)) {
+    data.privateTabEnabled = true;
+  }
+  if (!confirm(confirmTitle + '\n\nThis replaces EVERYTHING currently in the dashboard.\n\nOnly restore data you created yourself.')) return false;
+  try {
+    localStorage.setItem('portfolio-dashboard-template', JSON.stringify(data));
+  } catch (err) {
+    alert('Could not restore — browser storage is full.');
+    return false;
+  }
+  return true;
+}
+
+
+// ── CLOUD SYNC (private GitHub gist) ────────────────────────────────────────
+// Replaces the File System Access sync removed 2026-08-27. Three deliberate
+// differences from that attempt, all of them reasons it failed:
+//   1. Plain fetch against api.github.com — no File System Access API, which Safari
+//      does not have at all. That alone made the old design unusable on the Mac.
+//   2. Manual Push / Pull buttons. Nothing syncs on a timer or on visibilitychange,
+//      so an idle tab can never win a race against the machine being typed on.
+//   3. Conflicts are decided on the gist's own revision sha, never on a wall clock.
+//      We remember the sha we last read or wrote; if the gist has moved on since,
+//      Push refuses and says to Pull first. Every push is a gist revision, so even a
+//      forced overwrite is recoverable from the gist's history on github.com.
+const SYNC_KEY  = 'portfolio-dashboard-sync';
+const GIST_FILE = 'portfolio-dashboard.json';
+// Kept in its OWN localStorage key, never in buildStateJson(): that function powers the
+// downloadable backup too, and an access token must not ride along inside a file the
+// owner might send to someone.
+let syncCfg = { gistId: '', token: '', lastSha: '', lastAt: 0, lastDir: '' };
+let _syncBusy = false;
+
+function loadSyncCfg() {
+  try { Object.assign(syncCfg, JSON.parse(localStorage.getItem(SYNC_KEY) || '{}')); } catch (_) {}
+}
+function saveSyncCfg() {
+  try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg)); } catch (_) {}
+}
+function syncConfigured() { return !!(syncCfg.gistId && syncCfg.token); }
+
+async function gistApi(path, opts = {}) {
+  const res = await fetch('https://api.github.com' + path, {
+    ...opts,
+    headers: {
+      'Accept': 'application/vnd.github+json',
+      'Authorization': 'Bearer ' + syncCfg.token,
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(
+    res.status === 401 ? 'GitHub rejected the token (401). Copy it again — it is only shown once, and a partial paste looks exactly like this.'
+  : res.status === 404 ? 'No gist with that ID (404). Check the ID, and that the token belongs to the account that owns the gist.'
+  : res.status === 403 ? 'GitHub refused the request (403). Usually a token without the gist scope, or too many requests in a row.'
+  : `GitHub returned ${res.status}.`);
+  return res.json();
+}
+
+// The commits endpoint answers "has the gist moved?" without downloading the payload,
+// which matters here: with thesis screenshots in it the JSON runs to megabytes.
+async function gistHeadSha() {
+  const commits = await gistApi(`/gists/${encodeURIComponent(syncCfg.gistId)}/commits?per_page=1`);
+  return Array.isArray(commits) && commits[0] ? commits[0].version : '';
+}
+
+async function gistRead() {
+  const g = await gistApi('/gists/' + encodeURIComponent(syncCfg.gistId));
+  const files = g.files || {};
+  const file = files[GIST_FILE] || Object.values(files).find(f => f && /\.json$/i.test(f.filename || ''));
+  if (!file) throw new Error(`That gist has no ${GIST_FILE} in it. Push from your first machine before pulling on this one.`);
+  let content = file.content;
+  // Over ~1 MB GitHub truncates content and puts the real bytes behind raw_url. This
+  // payload passes 1 MB as soon as a couple of chart screenshots are saved, so the
+  // fallback is the normal path here, not an edge case.
+  if (file.truncated || content == null) {
+    const raw = await fetch(file.raw_url);
+    if (!raw.ok) throw new Error('Could not download the full gist contents.');
+    content = await raw.text();
+  }
+  return { version: (g.history && g.history[0] && g.history[0].version) || '', content };
+}
+
+function syncStamp(dir) {
+  syncCfg.lastAt = Date.now();
+  syncCfg.lastDir = dir;
+  saveSyncCfg();
+}
+
+// Does the gist hold something a push would destroy? An unreadable, missing or placeholder
+// file is not data, so failures here answer "no" rather than blocking the first push.
+async function gistHoldsDashboard() {
+  try {
+    const { content } = await gistRead();
+    const parsed = JSON.parse(content);
+    return !!(parsed && Array.isArray(parsed.portfolio) && parsed.portfolio.length);
+  } catch (_) {
+    return false;
+  }
+}
+
+// Push: this machine's data becomes the gist's new revision.
+async function syncPush(force) {
+  const head = await gistHeadSha();
+  if (!force && head && head !== syncCfg.lastSha) {
+    if (syncCfg.lastSha) {
+      return { ok: false, conflict: true, msg: 'The cloud copy changed since this machine last synced — your other machine has pushed. Get the cloud copy first, or overwrite if this machine is the one you trust.' };
+    }
+    // Never synced from here, so the gist's revision is not one we have seen. That is the
+    // dangerous case *only if* the gist actually holds a dashboard: a gist created from the
+    // setup instructions holds the placeholder "{}", and making a beginner force past their
+    // own placeholder on step one is how you teach them to click through the guard that
+    // matters later. Check once, cheaply, and refuse only over real data.
+    if (await gistHoldsDashboard()) {
+      return { ok: false, conflict: true, msg: 'That gist already holds a dashboard and this machine has never synced with it. Get the cloud copy first, or overwrite if this machine is the one you trust.' };
+    }
+  }
+  const g = await gistApi('/gists/' + encodeURIComponent(syncCfg.gistId), {
+    method: 'PATCH',
+    body: JSON.stringify({ files: { [GIST_FILE]: { content: buildStateJson() } } }),
+  });
+  syncCfg.lastSha = (g.history && g.history[0] && g.history[0].version) || syncCfg.lastSha;
+  syncStamp('push');
+  return { ok: true, msg: 'Pushed to the cloud ✓' };
+}
+
+// Pull: the gist's data replaces this machine's. Destructive, so it goes through the
+// same confirm-and-reload path as restoring a backup file.
+async function syncPull() {
+  const { version, content } = await gistRead();
+  let data;
+  try { data = JSON.parse(content); } catch (_) {
+    return { ok: false, msg: 'The gist contents are not valid JSON.' };
+  }
+  if (!adoptStateObject(data, 'Pull the cloud copy onto this machine?')) {
+    return { ok: false, msg: 'Pull cancelled.' };
+  }
+  syncCfg.lastSha = version;
+  syncStamp('pull');
+  location.reload();
+  return { ok: true, msg: 'Pulled ✓' };
+}
+
+
+// ── CLOUD SYNC UI ───────────────────────────────────────────────────────────
+
+function showSyncModal() {
+  loadSyncCfg();
+  document.getElementById('sync-gistid').value = syncCfg.gistId || '';
+  document.getElementById('sync-token').value  = syncCfg.token || '';
+  setSyncError('');
+  syncShowPane(syncConfigured() ? 'ready' : 'setup');
+  document.getElementById('syncModal').classList.add('open');
+}
+
+function hideSyncModal() {
+  document.getElementById('syncModal').classList.remove('open');
+}
+
+function syncShowPane(which) {
+  const setup = document.getElementById('syncSetup');
+  const ready = document.getElementById('syncReady');
+  if (setup) setup.style.display = which === 'setup' ? '' : 'none';
+  if (ready) ready.style.display = which === 'ready' ? '' : 'none';
+  const conflict = document.getElementById('sync-conflict');
+  if (conflict) conflict.style.display = 'none';
+  if (which === 'ready') renderSyncStatus();
+}
+
+function editSyncSettings() { setSyncError(''); syncShowPane('setup'); }
+
+function setSyncError(msg) {
+  ['sync-error', 'sync-error2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = msg || '';
+  });
+}
+
+function renderSyncStatus() {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  const when = syncCfg.lastAt
+    ? new Date(syncCfg.lastAt).toLocaleString()
+    : null;
+  el.textContent = when
+    ? `Last ${syncCfg.lastDir === 'pull' ? 'got the cloud copy' : 'sent this computer’s data'}: ${when}`
+    : 'This computer has not synced yet.';
+}
+
+function saveSyncSettings() {
+  // A gist URL pastes far more easily than the bare id, so accept either and keep the
+  // last path segment — that is the id in every form github.com hands out.
+  const rawId = (document.getElementById('sync-gistid').value || '').trim();
+  const id    = (rawId.split(/[?#]/)[0].split('/').filter(Boolean).pop() || '');
+  const token = (document.getElementById('sync-token').value || '').trim();
+  if (!id)    { setSyncError('Paste the Gist ID (or the whole gist address).'); return; }
+  if (!token) { setSyncError('Paste the access token.'); return; }
+  // A different gist means a different history — the remembered sha would be a lie.
+  if (id !== syncCfg.gistId) syncCfg.lastSha = '';
+  syncCfg.gistId = id;
+  syncCfg.token  = token;
+  saveSyncCfg();
+  setSyncError('');
+  syncShowPane('ready');
+}
+
+function syncSetBusy(on) {
+  _syncBusy = on;
+  ['sync-push-btn', 'sync-pull-btn'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = on;
+  });
+}
+
+async function doSyncPush(force) {
+  if (_syncBusy) return;
+  setSyncError('');
+  document.getElementById('sync-conflict').style.display = 'none';
+  syncSetBusy(true);
+  try {
+    const r = await syncPush(!!force);
+    if (r.ok) {
+      renderSyncStatus();
+      showUndoToast(r.msg);
+      hideSyncModal();
+    } else if (r.conflict) {
+      document.getElementById('sync-conflict-msg').textContent = r.msg;
+      document.getElementById('sync-conflict').style.display = '';
+    } else {
+      setSyncError(r.msg);
+    }
+  } catch (e) {
+    setSyncError(e.message || String(e));
+  } finally {
+    syncSetBusy(false);
+  }
+}
+
+async function doSyncPull() {
+  if (_syncBusy) return;
+  setSyncError('');
+  syncSetBusy(true);
+  try {
+    const r = await syncPull();
+    if (!r.ok) setSyncError(r.msg);
+  } catch (e) {
+    setSyncError(e.message || String(e));
+  } finally {
+    syncSetBusy(false);
+  }
 }
 
 // ── UNDO ─────────────────────────────────────────────────────────────────────
@@ -6446,6 +6764,7 @@ function renderAll() {
 // ── INIT ────────────────────────────────────────────────────────────────────
 
 loadState();
+loadSyncCfg();
 saveState(); // persist any color deduplication fixes immediately
 Promise.allSettled([fetchFxRates(), fetchPrices()]).then(autoSnapshotHistory);
 fetchPrivateCryptoPrices();
