@@ -1274,6 +1274,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <button class="hist-range-btn" id="histRange-all" onclick="setHistoryWindow('all')">All</button>
       </div>
       <button class="edit-btn" id="histLogBtn" onclick="toggleHistoryLog()" title="Log scale — lets a 30x and a 3x share one axis. Months with a zero or negative net worth have no place on a log axis; they are shaded and left blank.">log</button>
+      <button class="edit-btn" id="histAdjBtn" onclick="toggleWithdrawalAdj()" style="display:none" title="Withdrawal-adjusted — adds back the salary and dividends you took out, so the line shows what the portfolio would be worth had nothing been withdrawn.">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+        adjusted
+      </button>
       <button class="edit-btn" id="btcCompareBtn" onclick="toggleBtcCompare()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L12 6M12 18L12 22M4.93 4.93L7.76 7.76M16.24 16.24L19.07 19.07M2 12L6 12M18 12L22 12M4.93 19.07L7.76 16.24M16.24 7.76L19.07 4.93"/></svg>
         vs BTC
@@ -2227,6 +2231,7 @@ let theme = 'dark';
 let privateInfoDismissed = false;
 let historyWindow = 'all';   // '3m' | '6m' | '1y' | '2y' | '5y' | 'all' — how much history the chart shows
 let historyLogScale = false; // log axis in vs-BTC mode (see renderHistorySection)
+let showWithdrawalAdj = true; // withdrawal-adjusted line on the history chart (toggled like vs BTC)
 let btcCompareMode = false;
 let privateTabEnabled = false;
 let btcPriceCache = {}; // 'YYYY-MM-01' -> price
@@ -2479,6 +2484,7 @@ function loadState() {
   privacyMode          = saved.privacyMode || false;
   historyWindow        = (saved.historyWindow in HISTORY_WINDOWS) ? saved.historyWindow : 'all';
   historyLogScale      = saved.historyLogScale || false;
+  showWithdrawalAdj    = saved.showWithdrawalAdj !== false; // on unless explicitly turned off
   if (saved.fxRates) {
     fxRates = { ...FALLBACK_RATES, ...saved.fxRates };
     fxLastUpdated = saved.fxLastUpdated ? new Date(saved.fxLastUpdated) : null;
@@ -2527,7 +2533,7 @@ function buildStateJson() {
     nextPrivateAssetId, nextPrivateCashId,
     airdrops, nextAirdropId,
     activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode,
-    historyWindow, historyLogScale, paletteVersion: PALETTE_VERSION,
+    historyWindow, historyLogScale, showWithdrawalAdj, paletteVersion: PALETTE_VERSION,
     savedAt: Date.now() // informational only — tells two same-day backup files apart
   });
 }
@@ -5273,6 +5279,12 @@ function toggleHistoryLog() {
   renderHistorySection();
 }
 
+function toggleWithdrawalAdj() {
+  showWithdrawalAdj = !showWithdrawalAdj;
+  saveState();
+  renderHistorySection();
+}
+
 async function fetchBtcHistoryPrices(dates) {
   const needed = dates.filter(d => !btcPriceCache[d]);
   if (!needed.length) return;
@@ -5359,9 +5371,17 @@ function renderHistorySection() {
     return d.value + cumWithdrawals;
   });
   const hasWithdrawals = chartRows.some(d => d.salary || d.dividend || d.expenses || d.tax);
+  // The adjusted line is a toggle like vs BTC, but its button only makes sense when the
+  // visible window actually holds a withdrawal — otherwise it would toggle nothing.
+  const adjBtn = document.getElementById('histAdjBtn');
+  if (adjBtn) {
+    adjBtn.style.display = hasWithdrawals ? '' : 'none';
+    adjBtn.classList.toggle('active', showWithdrawalAdj);
+  }
+  const showAdj = hasWithdrawals && showWithdrawalAdj;
 
   const fmtDkk = fmtHomeAmt;
-  const showLegend = hasWithdrawals || btcCompareMode;
+  const showLegend = showAdj || btcCompareMode;
   let datasets, yTickCb, tooltipLabelCb;
   // Months a log axis physically cannot draw (net worth <= 0). Shaded rather than
   // silently skipped, so a break in the line reads as history and not as a bug.
@@ -5380,7 +5400,7 @@ function renderHistorySection() {
     const btcRaw = chartRows.map(d => btcPriceCache[d.date] ?? null);
     // Only the lines actually drawn get a say in where the shared baseline lands —
     // the adjusted series must not hold the origin hostage when it isn't on screen.
-    const baseIdx = sharedBaseIndex(hasWithdrawals ? [nwRaw, adjustedData, btcRaw] : [nwRaw, btcRaw]);
+    const baseIdx = sharedBaseIndex(showAdj ? [nwRaw, adjustedData, btcRaw] : [nwRaw, btcRaw]);
     const nwPct  = rebase(nwRaw, baseIdx);
     const adjPct = rebase(adjustedData, baseIdx);
     const btcPct = rebase(btcRaw, baseIdx);
@@ -5388,7 +5408,7 @@ function renderHistorySection() {
     const pts = chartRows.length > 36 ? 0 : 3;
     datasets = [
       { label: 'Net Worth', data: nwPct, fill: false, borderColor: th.accent, borderWidth: 2, pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: th.accent, tension: 0.3 },
-      ...(hasWithdrawals ? [{ label: 'Withdrawal-adjusted', data: adjPct, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3 }] : []),
+      ...(showAdj ? [{ label: 'Withdrawal-adjusted', data: adjPct, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3 }] : []),
       { label: 'BTC', data: btcPct, fill: false, borderColor: '#f7931a', borderWidth: 2, pointRadius: pts, pointHoverRadius: 5, pointBackgroundColor: '#f7931a', tension: 0.3 }
     ];
     // Percentages are deliberately not masked by privacyMode — same rule as everywhere
@@ -5417,7 +5437,7 @@ function renderHistorySection() {
   } else {
     datasets = [
       { label: 'Net Worth', data: chartRows.map(d => d.value), fill: true, backgroundColor: gradient, borderColor: th.accent, borderWidth: 2, pointRadius: chartRows.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent, tension: 0.3 },
-      ...(hasWithdrawals ? [{ label: 'Withdrawal-adjusted', data: adjustedData, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: chartRows.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3 }] : [])
+      ...(showAdj ? [{ label: 'Withdrawal-adjusted', data: adjustedData, fill: false, borderColor: th.accent2, borderWidth: 2, borderDash: [5,4], pointRadius: chartRows.length > 36 ? 0 : 3, pointHoverRadius: 5, pointBackgroundColor: th.accent2, tension: 0.3 }] : [])
     ];
     yTickCb = v => privacyMode ? '•••' : (Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v);
     tooltipLabelCb = ctx => `  ${ctx.dataset.label}: ${fmtUsd(ctx.raw)}`;
