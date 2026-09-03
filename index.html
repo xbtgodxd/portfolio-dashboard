@@ -1771,14 +1771,42 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
           <option value="Biotech"><option value="Energy"><option value="Clean Energy">
           <option value="Consumer"><option value="Industrials"><option value="Real Estate">
           <option value="Commodities"><option value="Fixed Income">
-          <option value="Perp DEX"><option value="L1"><option value="L2 / Scaling">
-          <option value="Restaking / LST"><option value="Neobank / Payments">
-          <option value="Stablecoins"><option value="DEX / AMM"><option value="Lending">
-          <option value="Oracles"><option value="DePIN"><option value="AI Crypto">
-          <option value="Gaming / NFT"><option value="Memecoins"><option value="RWA">
-          <option value="Privacy"><option value="Bridge / Interop">
-          <option value="Store of Value"><option value="Exchange Tokens">
-          <option value="Yield / Vaults">
+          <!-- Chains -->
+          <option value="Layer 1">
+          <option value="Layer 2 &amp; Rollups">
+          <option value="Modular &amp; DA">
+          <!-- Trading -->
+          <option value="Perp DEXs">
+          <option value="Spot DEXs">
+          <option value="Prediction Markets">
+          <option value="Options &amp; Structured">
+          <!-- Yield &amp; Credit -->
+          <option value="Lending">
+          <option value="Liquid Staking">
+          <option value="Liquid Restaking">
+          <option value="Yield Tokenization">
+          <!-- Stablecoins &amp; Payments -->
+          <option value="Stablechains">
+          <option value="Stablecoin Issuers">
+          <option value="Crypto Neobanks">
+          <option value="Payment Rails">
+          <!-- Infrastructure -->
+          <option value="Oracles &amp; Data">
+          <option value="Bridges &amp; Interop">
+          <option value="Restaking &amp; Security">
+          <option value="Privacy">
+          <!-- DePIN &amp; AI -->
+          <option value="Decentralized Compute">
+          <option value="Physical DePIN">
+          <option value="AI Agents">
+          <option value="Storage">
+          <!-- Assets &amp; Culture -->
+          <option value="Store of Value">
+          <option value="RWA &amp; Tokenized">
+          <option value="Memecoins">
+          <option value="Gaming &amp; NFT">
+          <option value="Exchange Tokens">
+          <option value="Launchpads &amp; Attention">
         </datalist>
         <datalist id="physical-sector-list">
           <option value="Vehicle"><option value="Real Estate"><option value="Jewelry">
@@ -2175,27 +2203,6 @@ const SECTOR_COLORS = {
   "Real Estate":  { color: "#e67e22", bg: "rgba(230,126,34,0.12)"  },
   "Commodities":  { color: "#d4ac0d", bg: "rgba(212,172,13,0.12)"  },
   "Fixed Income": { color: "#85c1e9", bg: "rgba(133,193,233,0.12)" },
-  // Crypto sub-sectors - what the sector donut groups on. Filled automatically from
-  // CoinGecko's category database (see CG_SECTOR_RULES); always overridable by hand.
-  "Perp DEX":          { color: "#00c9a7", bg: "rgba(0,201,167,0.12)"   },
-  "L1":                { color: "#8b5cf6", bg: "rgba(139,92,246,0.12)"  },
-  "L2 / Scaling":      { color: "#c084fc", bg: "rgba(192,132,252,0.12)" },
-  "Restaking / LST":   { color: "#38bdf8", bg: "rgba(56,189,248,0.12)"  },
-  "Neobank / Payments":{ color: "#22c55e", bg: "rgba(34,197,94,0.12)"   },
-  "Stablecoins":       { color: "#26a17b", bg: "rgba(38,161,123,0.12)"  },
-  "DEX / AMM":         { color: "#06b6d4", bg: "rgba(6,182,212,0.12)"   },
-  "Lending":           { color: "#6366f1", bg: "rgba(99,102,241,0.12)"  },
-  "Oracles":           { color: "#2563eb", bg: "rgba(37,99,235,0.12)"   },
-  "DePIN":             { color: "#f472b6", bg: "rgba(244,114,182,0.12)" },
-  "AI Crypto":         { color: "#ff8c42", bg: "rgba(255,140,66,0.12)"  },
-  "Gaming / NFT":      { color: "#ec4899", bg: "rgba(236,72,153,0.12)"  },
-  "Memecoins":         { color: "#eab308", bg: "rgba(234,179,8,0.12)"   },
-  "RWA":               { color: "#b45309", bg: "rgba(180,83,9,0.12)"    },
-  "Privacy":           { color: "#64748b", bg: "rgba(100,116,139,0.12)" },
-  "Bridge / Interop":  { color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
-  "Store of Value":    { color: "#f7931a", bg: "rgba(247,147,26,0.12)"  },
-  "Exchange Tokens":   { color: "#d97706", bg: "rgba(217,119,6,0.12)"   },
-  "Yield / Vaults":    { color: "#a3e635", bg: "rgba(163,230,53,0.12)"  },
   // Physical-asset categories
   "Vehicle":         { color: "#3498db", bg: "rgba(52,152,219,0.12)"  },
   "Jewelry":         { color: "#e84393", bg: "rgba(232,67,147,0.12)"  },
@@ -2209,71 +2216,242 @@ const SECTOR_COLORS = {
 };
 
 // -- CRYPTO SECTORS ----------------------------------------------------------
-// CoinGecko is the category database: GET /coins/{id} returns a `categories` array
-// ("Perpetuals", "Layer 1 (L1)", "Restaking", "Neobank", ...). A coin carries ten of them
-// at once, most of them noise ("Binance Listed", "Made in USA", "Ethereum Ecosystem"),
-// so a coin's own list can't name its sector - this ordered rule list does the picking.
+// A two-level taxonomy, named the way the market names things rather than the way any
+// single data provider does. Checked against four real classification systems (2026-09):
+// Artemis (Perp DEXs, Spot DEXs, Prediction Markets, DATs - closest to how traders talk),
+// Messari/Blockworks (13 sectors -> 124 sub-sectors, the GICS-style shape borrowed here),
+// DefiLlama (102 protocol categories, the granularity for DeFi), and FTSE/Grayscale
+// (5 institutional buckets - too coarse to be useful in a pie).
 //
-// FIRST RULE THAT MATCHES WINS, and the order is the whole design: the narrow, defining
-// categories sit above the broad ones. HYPE is tagged both "Perpetuals" and "Layer 1 (L1)";
-// Perpetuals is higher, so HYPE reads as a perp DEX rather than as an L1 next to SOL.
-// "Neobank" sits above "Restaking" on purpose - it is what puts XPL and ETHFI in one
-// slice. Move that line below the Restaking rules and ETHFI becomes "Restaking / LST"
-// while XPL stays "Neobank / Payments"; that single line is the whole knob.
+// THEME is the roll-up ("how much of the book is one bet"), SECTOR is the fine grain
+// ("how much am I in perp DEXs"). Theme is never stored: it is derived from the sector via
+// THEME_OF, so there is only one field on a position to keep right.
+//
+// Stablechains sit under Stablecoins & Payments, NOT under Chains. Plasma's value driver
+// is stablecoin settlement volume, not general smart-contract activity - which also puts
+// XPL in the same theme as ETHFI while keeping them separate sectors.
+//
+// `hue`/`sat` are the theme's colour family; each sector inside a theme takes the same hue
+// at a different lightness, so assets in one theme read as visually related in the donut.
+const CRYPTO_TAXONOMY = [
+  { theme: 'Chains',                 hue: 265, sat: 72, sectors: [
+    'Layer 1', 'Layer 2 & Rollups', 'Modular & DA'] },
+  { theme: 'Trading',                hue: 190, sat: 82, sectors: [
+    'Perp DEXs', 'Spot DEXs', 'Prediction Markets', 'Options & Structured'] },
+  { theme: 'Yield & Credit',         hue: 150, sat: 62, sectors: [
+    'Lending', 'Liquid Staking', 'Liquid Restaking', 'Yield Tokenization'] },
+  { theme: 'Stablecoins & Payments', hue: 100, sat: 58, sectors: [
+    'Stablechains', 'Stablecoin Issuers', 'Crypto Neobanks', 'Payment Rails'] },
+  { theme: 'Infrastructure',         hue: 215, sat: 30, sectors: [
+    'Oracles & Data', 'Bridges & Interop', 'Restaking & Security', 'Privacy'] },
+  { theme: 'DePIN & AI',             hue: 320, sat: 70, sectors: [
+    'Decentralized Compute', 'Physical DePIN', 'AI Agents', 'Storage'] },
+  { theme: 'Assets & Culture',       hue: 30,  sat: 78, sectors: [
+    'Store of Value', 'RWA & Tokenized', 'Memecoins', 'Gaming & NFT',
+    'Exchange Tokens', 'Launchpads & Attention'] },
+];
+
+// sector name -> theme name. Built once; the reverse direction lives in CRYPTO_TAXONOMY.
+const THEME_OF = {};
+CRYPTO_TAXONOMY.forEach(t => t.sectors.forEach(sec => { THEME_OF[sec] = t.theme; }));
+
+// Theme order for the donut legend, so the by-theme view keeps a stable reading order.
+const THEME_ORDER = CRYPTO_TAXONOMY.map(t => t.theme);
+
+function hslHex(h, sPct, lPct) {
+  const sN = sPct / 100, lN = lPct / 100;
+  const c = (1 - Math.abs(2 * lN - 1)) * sN;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = lN - c / 2;
+  const seg = [[c,x,0],[x,c,0],[0,c,x],[0,x,c],[x,0,c],[c,0,x]][Math.floor(h / 60) % 6];
+  return '#' + seg.map(v => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+}
+function tint(hex) {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r},${g},${b},0.12)`;
+}
+
+// Lightness ramp inside a theme: first sector lightest, last darkest. Spread over the
+// theme's own length so a 3-sector theme and a 6-sector one both use the full range.
+const SECTOR_L_MAX = 74, SECTOR_L_MIN = 44;
+function sectorLightness(i, n) {
+  return n < 2 ? (SECTOR_L_MAX + SECTOR_L_MIN) / 2
+               : SECTOR_L_MAX - (SECTOR_L_MAX - SECTOR_L_MIN) * (i / (n - 1));
+}
+
+// The theme's own swatch, used by the by-theme donut: the middle of its lightness ramp.
+const THEME_COLORS = {};
+CRYPTO_TAXONOMY.forEach(t => {
+  const hex = hslHex(t.hue, t.sat, (SECTOR_L_MAX + SECTOR_L_MIN) / 2);
+  THEME_COLORS[t.theme] = { color: hex, bg: tint(hex) };
+  t.sectors.forEach((sec, i) => {
+    const c = hslHex(t.hue, t.sat, sectorLightness(i, t.sectors.length));
+    SECTOR_COLORS[sec] = { color: c, bg: tint(c) };   // folds into the stock/physical table
+  });
+});
+
+// The curated table is the PRIMARY source, and CoinGecko is the fallback - not the other
+// way round. CoinGecko has 868 categories and none of them express the sectors that matter
+// most here: there is no "Stablechain" tag, no "Decentralized Compute" tag, and brand-new
+// listings (MegaETH, Nosana) come back with an empty category array entirely.
+// Keyed by ticker, uppercase. Ticker collisions are possible across chains (LIT is Lighter
+// here, not Litentry) - this table states which one this dashboard means.
+const CURATED_SECTORS = {
+  // Chains
+  ETH: 'Layer 1', SOL: 'Layer 1', SUI: 'Layer 1', APT: 'Layer 1', AVAX: 'Layer 1',
+  ADA: 'Layer 1', NEAR: 'Layer 1', TON: 'Layer 1', SEI: 'Layer 1', MON: 'Layer 1',
+  BNB: 'Layer 1', TRX: 'Layer 1', BERA: 'Layer 1', S: 'Layer 1',
+  ARB: 'Layer 2 & Rollups', OP: 'Layer 2 & Rollups', MEGA: 'Layer 2 & Rollups',
+  STRK: 'Layer 2 & Rollups', ZK: 'Layer 2 & Rollups', LINEA: 'Layer 2 & Rollups',
+  SCR: 'Layer 2 & Rollups', MANTA: 'Layer 2 & Rollups', BLAST: 'Layer 2 & Rollups',
+  TIA: 'Modular & DA', AVAIL: 'Modular & DA', DYM: 'Modular & DA',
+
+  // Trading
+  HYPE: 'Perp DEXs', LIT: 'Perp DEXs', PEAR: 'Perp DEXs', DYDX: 'Perp DEXs',
+  GMX: 'Perp DEXs', ASTER: 'Perp DEXs', DRIFT: 'Perp DEXs', VRTX: 'Perp DEXs',
+  EDGE: 'Perp DEXs', PARADEX: 'Perp DEXs',
+  UNI: 'Spot DEXs', AERO: 'Spot DEXs', RAY: 'Spot DEXs', CAKE: 'Spot DEXs',
+  CRV: 'Spot DEXs', BAL: 'Spot DEXs', JUP: 'Spot DEXs', VELO: 'Spot DEXs',
+  POLY: 'Prediction Markets', LMT: 'Prediction Markets',
+  RIBBON: 'Options & Structured', DRV: 'Options & Structured', LYRA: 'Options & Structured',
+
+  // Yield & Credit
+  AAVE: 'Lending', MORPHO: 'Lending', COMP: 'Lending', KMNO: 'Lending',
+  MAPLE: 'Lending', EULER: 'Lending', FLUID: 'Lending',
+  LDO: 'Liquid Staking', JTO: 'Liquid Staking', RPL: 'Liquid Staking',
+  SWISE: 'Liquid Staking', SD: 'Liquid Staking',
+  // ETHFI: the Cash card is the product the owner tracks it for; the LRT is the asset.
+  // Filed under Crypto Neobanks by the owner's call (2026-09) - see Stablecoins & Payments.
+  EZETH: 'Liquid Restaking', RSETH: 'Liquid Restaking', PUFFER: 'Liquid Restaking',
+  REZ: 'Liquid Restaking', SWELL: 'Liquid Restaking',
+  PENDLE: 'Yield Tokenization', SPECTRA: 'Yield Tokenization', YFI: 'Yield Tokenization',
+
+  // Stablecoins & Payments
+  XPL: 'Stablechains', STABLE: 'Stablechains', TEMPO: 'Stablechains', ARC: 'Stablechains',
+  ENA: 'Stablecoin Issuers', USUAL: 'Stablecoin Issuers', SKY: 'Stablecoin Issuers',
+  MKR: 'Stablecoin Issuers', FXS: 'Stablecoin Issuers', RSR: 'Stablecoin Issuers',
+  ETHFI: 'Crypto Neobanks', INFINEX: 'Crypto Neobanks', GNO: 'Crypto Neobanks',
+  XRP: 'Payment Rails', XLM: 'Payment Rails', REQ: 'Payment Rails',
+
+  // Infrastructure
+  LINK: 'Oracles & Data', PYTH: 'Oracles & Data', SEDA: 'Oracles & Data',
+  RED: 'Oracles & Data', API3: 'Oracles & Data', BAND: 'Oracles & Data',
+  ZRO: 'Bridges & Interop', W: 'Bridges & Interop', AXL: 'Bridges & Interop',
+  ACX: 'Bridges & Interop', SYN: 'Bridges & Interop',
+  EIGEN: 'Restaking & Security', SYMB: 'Restaking & Security', BABY: 'Restaking & Security',
+  ZEC: 'Privacy', XMR: 'Privacy', RAIL: 'Privacy', DASH: 'Privacy', ALEO: 'Privacy',
+
+  // DePIN & AI
+  NOS: 'Decentralized Compute', RENDER: 'Decentralized Compute', RNDR: 'Decentralized Compute',
+  AKT: 'Decentralized Compute', IO: 'Decentralized Compute', ATH: 'Decentralized Compute',
+  HNT: 'Physical DePIN', HONEY: 'Physical DePIN', GRASS: 'Physical DePIN',
+  DIMO: 'Physical DePIN', WIFI: 'Physical DePIN', GEOD: 'Physical DePIN',
+  TAO: 'AI Agents', VIRTUAL: 'AI Agents', FET: 'AI Agents', AI16Z: 'AI Agents',
+  ARC_AI: 'AI Agents', KAITO: 'AI Agents',
+  FIL: 'Storage', AR: 'Storage', STORJ: 'Storage', WAL: 'Storage',
+
+  // Assets & Culture
+  BTC: 'Store of Value', WBTC: 'Store of Value', TBTC: 'Store of Value',
+  ONDO: 'RWA & Tokenized', CFG: 'RWA & Tokenized', PENDLE_RWA: 'RWA & Tokenized',
+  GOLDX: 'RWA & Tokenized', PAXG: 'RWA & Tokenized', XAUT: 'RWA & Tokenized',
+  DOGE: 'Memecoins', SHIB: 'Memecoins', WIF: 'Memecoins', PEPE: 'Memecoins',
+  BONK: 'Memecoins', POPCAT: 'Memecoins', SPX: 'Memecoins',
+  IMX: 'Gaming & NFT', GALA: 'Gaming & NFT', APE: 'Gaming & NFT',
+  SAND: 'Gaming & NFT', AXS: 'Gaming & NFT', BLUR: 'Gaming & NFT',
+  OKB: 'Exchange Tokens', CRO: 'Exchange Tokens', KCS: 'Exchange Tokens',
+  BGB: 'Exchange Tokens', GT: 'Exchange Tokens',
+  PUMP: 'Launchpads & Attention', COOKIE: 'Launchpads & Attention',
+  BID: 'Launchpads & Attention',
+};
+
+// CoinGecko is now only the long-tail fallback: GET /coins/{id} returns a `categories`
+// array and this ordered list picks one, FIRST MATCH WINS. The ordering is the design -
+// narrow, defining categories above broad ones. Three of these were wrong on the first
+// pass and were fixed by running real coins through them (see DEVNOTES); if you add a
+// rule, run real coins through `sectorFromCgCategories` before trusting it. A tag's name
+// rarely tells you how broadly CoinGecko applies it.
 const CG_SECTOR_RULES = [
-  ['Perpetuals',                         'Perp DEX'],
-  ['Neobank',                            'Neobank / Payments'],
-  ['Yield Tokenization Protocol',        'Yield / Vaults'],
-  ['Restaking',                          'Restaking / LST'],
-  ['Liquid Restaking Governance Tokens', 'Restaking / LST'],
-  ['Liquid Staking Tokens',              'Restaking / LST'],
-  ['Liquid Staking Governance Tokens',   'Restaking / LST'],
-  ['Oracle',                             'Oracles'],
-  ['DePIN',                              'DePIN'],
-  ['Artificial Intelligence (AI)',       'AI Crypto'],
-  ['AI Agents',                          'AI Crypto'],
+  ['Perpetuals',                         'Perp DEXs'],
+  ['Prediction Markets',                 'Prediction Markets'],
+  ['Yield Tokenization Protocol',        'Yield Tokenization'],
+  ['Liquid Restaking Tokens',            'Liquid Restaking'],
+  ['Liquid Restaking Governance Tokens', 'Liquid Restaking'],
+  ['Restaking',                          'Restaking & Security'],
+  ['Liquid Staking Tokens',              'Liquid Staking'],
+  ['Liquid Staking Governance Tokens',   'Liquid Staking'],
+  ['Liquid Staking',                     'Liquid Staking'],
+  ['Oracle',                             'Oracles & Data'],
+  ['DePIN',                              'Physical DePIN'],
+  ['AI Agents',                          'AI Agents'],
+  ['Artificial Intelligence (AI)',       'AI Agents'],
+  ['Storage',                            'Storage'],
   ['Meme',                               'Memecoins'],
-  ['Stablecoin Issuer',                  'Stablecoins'],
-  ['Stablecoin Protocol',                'Stablecoins'],
-  ['Stablecoins',                        'Stablecoins'],
-  ['Real World Assets (RWA)',            'RWA'],
-  ['Tokenized Treasury Bills',           'RWA'],
+  ['Stablecoin Issuer',                  'Stablecoin Issuers'],
+  ['Stablecoin Protocol',                'Stablecoin Issuers'],
+  ['Stablecoins',                        'Stablecoin Issuers'],
+  ['Neobank',                            'Crypto Neobanks'],
+  ['Crypto Card Issuer',                 'Crypto Neobanks'],
+  ['Payment Solutions',                  'Payment Rails'],
+  ['Real World Assets (RWA)',            'RWA & Tokenized'],
+  ['RWA Protocol',                       'RWA & Tokenized'],
+  ['Tokenized Assets',                   'RWA & Tokenized'],
+  ['Tokenized Treasury Bills (T-Bills)', 'RWA & Tokenized'],
   ['Privacy Coins',                      'Privacy'],
-  ['Gaming (GameFi)',                    'Gaming / NFT'],
-  ['NFT',                                'Gaming / NFT'],
-  ['Bridge Governance Tokens',           'Bridge / Interop'],
-  ['Cross-chain Communication',          'Bridge / Interop'],
-  ['Yield Aggregator',                   'Yield / Vaults'],
-  ['Yield Farming',                      'Yield / Vaults'],
-  ['Yield Tokenized',                    'Yield / Vaults'],
-  ['Lending/Borrowing',                  'Lending'],
-  ['Decentralized Exchange (DEX)',       'DEX / AMM'],
-  ['Automated Market Maker (AMM)',       'DEX / AMM'],
+  ['Privacy Blockchain',                 'Privacy'],
+  ['Privacy Infrastructure',             'Privacy'],
+  ['Gaming (GameFi)',                    'Gaming & NFT'],
+  ['NFT Marketplace',                    'Gaming & NFT'],
+  ['NFT',                                'Gaming & NFT'],
+  ['Bridge Governance Tokens',           'Bridges & Interop'],
+  ['Interoperability',                   'Bridges & Interop'],
+  ['Options',                            'Options & Structured'],
+  ['Lending/Borrowing Protocols',        'Lending'],
+  ['Yield Aggregator',                   'Yield Tokenization'],
+  ['Yield Farming',                      'Yield Tokenization'],
+  ['Launchpad',                          'Launchpads & Attention'],
+  ['Decentralized Exchange (DEX)',       'Spot DEXs'],
+  ['Automated Market Maker (AMM)',       'Spot DEXs'],
+  ['Dex Aggregator',                     'Spot DEXs'],
   // Below the DEX rules on purpose: CoinGecko puts "Exchange-based Tokens" on DEX
   // governance tokens (AERO, PENDLE) as well as on CEX tokens, so a DEX must read as a
   // DEX first. Only a pure exchange token, with no DEX tag, reaches this line.
+  ['Centralized Exchange (CEX) Token',   'Exchange Tokens'],
   ['Exchange-based Tokens',              'Exchange Tokens'],
-  ['Data Availability',                  'L2 / Scaling'],
-  ['Layer 2 (L2)',                       'L2 / Scaling'],
-  ['Zero Knowledge (ZK)',                'L2 / Scaling'],
-  ['Layer 1 (L1)',                       'L1'],
-  ['Smart Contract Platform',            'L1'],
-  ['Decentralized Finance (DeFi)',       'DeFi'],
+  ['Data Availability',                  'Modular & DA'],
+  ['Modular Blockchain',                 'Modular & DA'],
+  ['Rollup',                             'Layer 2 & Rollups'],
+  ['Layer 2 (L2)',                       'Layer 2 & Rollups'],
+  ['Layer 3 (L3)',                       'Layer 2 & Rollups'],
+  ['Zero Knowledge (ZK)',                'Layer 2 & Rollups'],
+  ['Layer 1 (L1)',                       'Layer 1'],
+  ['Smart Contract Platform',            'Layer 1'],
 ];
 
-// Coins CoinGecko has no categories for (too new, or listed untagged - MEGA and NOS both
-// come back with none) plus the odd one it tags in a way that reads wrong in a portfolio.
-// Checked before the API, so these never cost a request.
-const CRYPTO_SECTOR_FALLBACK = {
-  BTC:  'Store of Value',
-  MEGA: 'L2 / Scaling',
-  NOS:  'DePIN',
-};
-
-// Sector values the app may overwrite with a looked-up one. Anything else in the field
-// was typed by hand (or is a stock / physical sector) and is left alone forever.
-const AUTO_SECTORS = new Set(['', 'Crypto', 'Crypto L1', 'Other']);
+// Sector values the app may overwrite with a looked-up one. Anything else in the field was
+// typed by hand (or is a stock / physical sector) and is left alone forever. The first
+// build's generic buckets are in here so they get re-tagged onto the real taxonomy.
+const AUTO_SECTORS = new Set(['', 'Crypto', 'Crypto L1', 'Other', 'DeFi']);
 const isAutoSector = v => AUTO_SECTORS.has((v || '').trim());
+
+// Sectors from the first build (2026-09) that the taxonomy renamed. Applied once in
+// migrateState so an existing save or backup does not land in Unsectored. Only add to
+// this map - never repurpose an entry, or an old backup migrates to the wrong sector.
+const SECTOR_RENAMES = {
+  'Perp DEX':           'Perp DEXs',
+  'L1':                 'Layer 1',
+  'L2 / Scaling':       'Layer 2 & Rollups',
+  'Restaking / LST':    'Liquid Restaking',
+  'Neobank / Payments': 'Crypto Neobanks',
+  'Stablecoins':        'Stablecoin Issuers',
+  'DEX / AMM':          'Spot DEXs',
+  'Oracles':            'Oracles & Data',
+  'DePIN':              'Physical DePIN',
+  'AI Crypto':          'AI Agents',
+  'Gaming / NFT':       'Gaming & NFT',
+  'RWA':                'RWA & Tokenized',
+  'Bridge / Interop':   'Bridges & Interop',
+  'Yield / Vaults':     'Yield Tokenization',
+};
 
 // The CoinGecko id a position actually prices off - KNOWN_PRICE_SOURCES wins over the
 // stored one, exactly as in fetchPrices().
@@ -2291,36 +2469,35 @@ function sectorFromCgCategories(cats) {
   return null;
 }
 
-// Fill in every auto-assignable sector we already know, from the fallback table and from
-// the cache an earlier run's API calls filled. Sync and offline - runs on every load.
+// Fill in every auto-assignable sector we already know: the curated table first, then the
+// cache an earlier run's API calls filled. Sync and offline - runs on every load.
 // Returns true if anything changed, so the caller knows whether to save.
 function applyCryptoSectors() {
   let changed = false;
   portfolio.forEach(p => {
     if (p.physical || !isAutoSector(p.sector)) return;
-    const cgId   = resolvedCgId(p);
-    const sector = CRYPTO_SECTOR_FALLBACK[(p.ticker || '').toUpperCase()]
+    const cgId = resolvedCgId(p);
+    const sector = CURATED_SECTORS[(p.ticker || '').toUpperCase()]
                 || (cgId ? cryptoSectorCache[cgId] : null);
     if (sector && sector !== p.sector) { p.sector = sector; changed = true; }
   });
   return changed;
 }
 
-// Look up the sectors we do not have yet. One call per coin - the batch price endpoint
-// carries no categories - so it is deliberately slow and cached forever: a coin's sector
-// does not move, and CoinGecko's free tier throttles hard above ~10 calls a minute.
-// `force` re-fetches coins already in the cache; the manual button passes it.
 // CoinGecko's public tier starts returning 429 after roughly three calls in quick
 // succession, so the gap between coins is generous. Nothing waits on this - the donut is
 // already on screen and re-renders when the answers land.
 const SECTOR_FETCH_GAP_MS = 6500;
 
+// Look up the long tail the curated table does not cover. One call per coin (the batch
+// price endpoint carries no categories), cached forever: a coin's sector does not move.
+// `force` re-checks coins already in the cache; the manual button passes it.
 async function fetchCryptoSectors(force) {
   const ids = [];
   portfolio.forEach(p => {
     if (p.physical) return;
     if (!force && !isAutoSector(p.sector)) return;
-    if (CRYPTO_SECTOR_FALLBACK[(p.ticker || '').toUpperCase()]) return;
+    if (CURATED_SECTORS[(p.ticker || '').toUpperCase()]) return; // curated wins, no request
     const id = resolvedCgId(p);
     if (id && (force || !(id in cryptoSectorCache)) && ids.indexOf(id) === -1) ids.push(id);
   });
@@ -2354,7 +2531,7 @@ async function fetchCryptoSectors(force) {
   return found;
 }
 
-// The "sectors" button: re-checks every coin, including ones already tagged.
+// The "sync sectors" button: re-checks every coin, including ones already tagged.
 async function refreshCryptoSectors() {
   showUndoToast('Looking up sectors on CoinGecko...');
   const before = portfolio.map(p => p.sector);
@@ -2366,8 +2543,15 @@ async function refreshCryptoSectors() {
              : 'No sectors found - CoinGecko may be rate-limiting, try again in a minute'));
 }
 
-// What a position is grouped under in the sector donut.
+// What a position is grouped under in the by-sector donut.
 const displaySector = p => ((p && p.sector) || '').trim() || 'Unsectored';
+
+// ...and in the by-theme donut. A stock or physical sector has no crypto theme, so it
+// stands as its own group rather than being forced into one.
+function displayTheme(p) {
+  const sec = displaySector(p);
+  return THEME_OF[sec] || sec;
+}
 
 // A sector's slice colour. Sectors typed by hand are not in SECTOR_COLORS, so they get a
 // palette colour picked by name - stable, so the same sector keeps its colour every render.
@@ -2377,6 +2561,11 @@ function sectorColor(name) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return COLOR_PALETTE[h % COLOR_PALETTE.length].color;
+}
+
+// A theme's slice colour, falling back to the sector rule for a non-crypto group.
+function themeColor(name) {
+  return (THEME_COLORS[name] && THEME_COLORS[name].color) || sectorColor(name);
 }
 
 // ── KNOWN PRICE SOURCES ─────────────────────────────────────────────────────
@@ -2461,6 +2650,20 @@ function migrateState() {
   portfolio.forEach(p => {
     if (p.ticker === 'SED') { p.ticker = 'SEDA'; }
     if (p.name   === 'SED') { p.name   = 'SEDA'; }
+    // Sectors from the first build, renamed by the 2026-09 taxonomy pass. A value being
+    // renamed proves the previous build assigned it automatically rather than the owner
+    // typing it, so the curated table gets the final say - that is the point of it.
+    const renamed = SECTOR_RENAMES[(p.sector || '').trim()];
+    if (renamed) p.sector = CURATED_SECTORS[(p.ticker || '').toUpperCase()] || renamed;
+  });
+}
+
+// Same rename over the closed-trade log. Separate from migrateState() because that runs
+// before loadState() has assigned closedTrades - doing it there rewrote the stale array.
+function migrateClosedTradeSectors() {
+  closedTrades.forEach(t => {
+    const renamed = SECTOR_RENAMES[(t.sector || '').trim()];
+    if (renamed) t.sector = CURATED_SECTORS[(t.ticker || '').toUpperCase()] || renamed;
   });
 }
 
@@ -2677,6 +2880,7 @@ function loadState() {
   }
   closedTrades = saved.closedTrades || [];
   recomputeClosedPnlPct(); // repair any closed trade whose % was stored with the old inflated formula
+  migrateClosedTradeSectors();
   historyModified = saved.historyModified || false;
   historyData = (historyModified && saved.historyData && saved.historyData.length)
     ? saved.historyData
@@ -2699,7 +2903,7 @@ function loadState() {
   historyWindow        = (saved.historyWindow in HISTORY_WINDOWS) ? saved.historyWindow : 'all';
   historyLogScale      = saved.historyLogScale || false;
   cryptoSectorCache    = saved.cryptoSectorCache || {};
-  donutGroupMode       = saved.donutGroupMode === 'sector' ? 'sector' : 'asset';
+  donutGroupMode       = DONUT_MODES.indexOf(saved.donutGroupMode) >= 0 ? saved.donutGroupMode : 'asset';
   showWithdrawalAdj    = saved.showWithdrawalAdj !== false; // on unless explicitly turned off
   if (saved.fxRates) {
     fxRates = { ...FALLBACK_RATES, ...saved.fxRates };
@@ -4886,33 +5090,36 @@ function renderAssetDonut(data, cash, th) {
   });
 }
 
-// The same donut grouped by sector - what shows how much of the book rides on one
-// narrative rather than one ticker. Slices are notional (currentValue), matching the
-// asset donut, so a perp counts at full market exposure and a hedge does not net out.
-// No leverage divider here: two legs of the same ticker are the same sector, so they
-// belong in one arc.
-function renderSectorDonut(data, cash, th) {
-  if (!sectorLookupTried) {
-    sectorLookupTried = true;
-    fetchCryptoSectors(false); // fire and forget; it re-renders itself if it finds anything
-  }
-  const totals = {};
+// The donut grouped by something other than the position: by sector ("how much am I in
+// perp DEXs") or by theme ("how much of the book is one bet"). Slices are notional
+// (currentValue), matching the asset donut, so a perp counts at full market exposure and a
+// hedge does not net out, and both views sum to the same number.
+// No leverage divider here: two legs of one ticker share a sector and belong in one arc.
+function renderGroupedDonut(data, cash, th, keyOf, colorOf, order) {
+  const totals = {}, counts = {};
   data.forEach(p => {
-    const s = displaySector(p);
-    totals[s] = (totals[s] || 0) + Math.max(0, p.currentValue);
+    const k = keyOf(p);
+    totals[k] = (totals[k] || 0) + Math.max(0, p.currentValue);
+    counts[k] = (counts[k] || 0) + 1;
   });
-  const entries = Object.keys(totals)
-    .filter(k => totals[k] > 0)
-    .sort((a, b) => totals[b] - totals[a])
-    .map(k => [k, totals[k]]);
+  // Themes keep the taxonomy's own reading order (Chains, Trading, Yield...) so the legend
+  // does not reshuffle as prices move; sectors sort by size, where biggest-first is the
+  // more useful read.
+  const keys = Object.keys(totals).filter(k => totals[k] > 0);
+  const entries = (order
+      ? keys.sort((a, b) => {
+          const ia = order.indexOf(a), ib = order.indexOf(b);
+          if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+          return totals[b] - totals[a];
+        })
+      : keys.sort((a, b) => totals[b] - totals[a])
+    ).map(k => [k, totals[k]]);
   if (cash > 0) entries.push(['Cash', cash]);
 
   const labels     = entries.map(e => e[0]);
   const values     = entries.map(e => e[1]);
-  const colors     = labels.map(l => l === 'Cash' ? CASH_COLOR : sectorColor(l));
+  const colors     = labels.map(l => l === 'Cash' ? CASH_COLOR : colorOf(l));
   const totalValue = values.reduce((a, b) => a + b, 0);
-  const counts     = {};
-  data.forEach(p => { const s = displaySector(p); counts[s] = (counts[s] || 0) + 1; });
 
   if (donutChart) donutChart.destroy();
   donutChart = new Chart(document.getElementById('donutChart'), {
@@ -4965,18 +5172,39 @@ function renderSectorDonut(data, cash, th) {
   });
 }
 
-// Flip the donut between per-position and per-sector. Persisted, so it survives a reload.
+function renderSectorDonut(data, cash, th) {
+  if (!sectorLookupTried) {
+    sectorLookupTried = true;
+    fetchCryptoSectors(false); // fire and forget; it re-renders itself if it finds anything
+  }
+  renderGroupedDonut(data, cash, th, displaySector, sectorColor, null);
+}
+
+function renderThemeDonut(data, cash, th) {
+  if (!sectorLookupTried) {
+    sectorLookupTried = true;
+    fetchCryptoSectors(false);
+  }
+  renderGroupedDonut(data, cash, th, displayTheme, themeColor, THEME_ORDER);
+}
+
+// Cycle the donut: one slice per position -> per sector -> per theme -> back.
+// Persisted, so it survives a reload.
+const DONUT_MODES = ['asset', 'sector', 'theme'];
 function toggleDonutGroup() {
-  donutGroupMode = donutGroupMode === 'sector' ? 'asset' : 'sector';
+  const i = DONUT_MODES.indexOf(donutGroupMode);
+  donutGroupMode = DONUT_MODES[(i + 1) % DONUT_MODES.length];
   saveState();
   renderAll();
 }
 
+// The button names the view it will switch TO, not the one you are looking at.
 function updateDonutGroupBtn() {
   const btn = document.getElementById('donutGroupBtn');
   if (!btn) return;
-  btn.textContent = donutGroupMode === 'sector' ? 'by asset' : 'by sector';
-  btn.classList.toggle('active', donutGroupMode === 'sector');
+  const i = DONUT_MODES.indexOf(donutGroupMode);
+  btn.textContent = 'by ' + DONUT_MODES[(i + 1) % DONUT_MODES.length];
+  btn.classList.toggle('active', donutGroupMode !== 'asset');
 }
 
 
@@ -4993,8 +5221,9 @@ function renderCharts(data) {
   if (donutLbl) donutLbl.textContent = fmtUsd(trueNetWorth);
 
   updateDonutGroupBtn();
-  if (donutGroupMode === 'sector') renderSectorDonut(data, cash, th);
-  else                             renderAssetDonut(data, cash, th);
+  if      (donutGroupMode === 'sector') renderSectorDonut(data, cash, th);
+  else if (donutGroupMode === 'theme')  renderThemeDonut(data, cash, th);
+  else                                  renderAssetDonut(data, cash, th);
 
   // Bar
   // One bar per position: spot measured on cost basis, perps on margin.
