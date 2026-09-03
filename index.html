@@ -1249,7 +1249,11 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="chart-card">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
         <div class="section-title">Portfolio Allocation</div>
-        <span id="donutTotalLabel" style="font-family:var(--mono);font-size:12px;color:var(--text2)"></span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="edit-btn" id="donutGroupBtn" onclick="toggleDonutGroup()" title="Group the donut by sector instead of by position - shows how much of the book sits in one narrative.">by sector</button>
+          <button class="edit-btn" id="sectorLookupBtn" onclick="refreshCryptoSectors()" title="Look every coin up in CoinGecko's category database and re-tag its sector. Only touches positions whose sector is still blank or the generic 'Crypto'.">sync sectors</button>
+          <span id="donutTotalLabel" style="font-family:var(--mono);font-size:12px;color:var(--text2)"></span>
+        </div>
       </div>
       <div class="chart-inner">
         <canvas id="donutChart"></canvas>
@@ -1767,6 +1771,14 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
           <option value="Biotech"><option value="Energy"><option value="Clean Energy">
           <option value="Consumer"><option value="Industrials"><option value="Real Estate">
           <option value="Commodities"><option value="Fixed Income">
+          <option value="Perp DEX"><option value="L1"><option value="L2 / Scaling">
+          <option value="Restaking / LST"><option value="Neobank / Payments">
+          <option value="Stablecoins"><option value="DEX / AMM"><option value="Lending">
+          <option value="Oracles"><option value="DePIN"><option value="AI Crypto">
+          <option value="Gaming / NFT"><option value="Memecoins"><option value="RWA">
+          <option value="Privacy"><option value="Bridge / Interop">
+          <option value="Store of Value"><option value="Exchange Tokens">
+          <option value="Yield / Vaults">
         </datalist>
         <datalist id="physical-sector-list">
           <option value="Vehicle"><option value="Real Estate"><option value="Jewelry">
@@ -2163,6 +2175,27 @@ const SECTOR_COLORS = {
   "Real Estate":  { color: "#e67e22", bg: "rgba(230,126,34,0.12)"  },
   "Commodities":  { color: "#d4ac0d", bg: "rgba(212,172,13,0.12)"  },
   "Fixed Income": { color: "#85c1e9", bg: "rgba(133,193,233,0.12)" },
+  // Crypto sub-sectors - what the sector donut groups on. Filled automatically from
+  // CoinGecko's category database (see CG_SECTOR_RULES); always overridable by hand.
+  "Perp DEX":          { color: "#00c9a7", bg: "rgba(0,201,167,0.12)"   },
+  "L1":                { color: "#8b5cf6", bg: "rgba(139,92,246,0.12)"  },
+  "L2 / Scaling":      { color: "#c084fc", bg: "rgba(192,132,252,0.12)" },
+  "Restaking / LST":   { color: "#38bdf8", bg: "rgba(56,189,248,0.12)"  },
+  "Neobank / Payments":{ color: "#22c55e", bg: "rgba(34,197,94,0.12)"   },
+  "Stablecoins":       { color: "#26a17b", bg: "rgba(38,161,123,0.12)"  },
+  "DEX / AMM":         { color: "#06b6d4", bg: "rgba(6,182,212,0.12)"   },
+  "Lending":           { color: "#6366f1", bg: "rgba(99,102,241,0.12)"  },
+  "Oracles":           { color: "#2563eb", bg: "rgba(37,99,235,0.12)"   },
+  "DePIN":             { color: "#f472b6", bg: "rgba(244,114,182,0.12)" },
+  "AI Crypto":         { color: "#ff8c42", bg: "rgba(255,140,66,0.12)"  },
+  "Gaming / NFT":      { color: "#ec4899", bg: "rgba(236,72,153,0.12)"  },
+  "Memecoins":         { color: "#eab308", bg: "rgba(234,179,8,0.12)"   },
+  "RWA":               { color: "#b45309", bg: "rgba(180,83,9,0.12)"    },
+  "Privacy":           { color: "#64748b", bg: "rgba(100,116,139,0.12)" },
+  "Bridge / Interop":  { color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
+  "Store of Value":    { color: "#f7931a", bg: "rgba(247,147,26,0.12)"  },
+  "Exchange Tokens":   { color: "#d97706", bg: "rgba(217,119,6,0.12)"   },
+  "Yield / Vaults":    { color: "#a3e635", bg: "rgba(163,230,53,0.12)"  },
   // Physical-asset categories
   "Vehicle":         { color: "#3498db", bg: "rgba(52,152,219,0.12)"  },
   "Jewelry":         { color: "#e84393", bg: "rgba(232,67,147,0.12)"  },
@@ -2174,6 +2207,177 @@ const SECTOR_COLORS = {
   "Boat":            { color: "#1abc9c", bg: "rgba(26,188,156,0.12)"  },
   "Precious Metals": { color: "#d4af37", bg: "rgba(212,175,55,0.12)"  },
 };
+
+// -- CRYPTO SECTORS ----------------------------------------------------------
+// CoinGecko is the category database: GET /coins/{id} returns a `categories` array
+// ("Perpetuals", "Layer 1 (L1)", "Restaking", "Neobank", ...). A coin carries ten of them
+// at once, most of them noise ("Binance Listed", "Made in USA", "Ethereum Ecosystem"),
+// so a coin's own list can't name its sector - this ordered rule list does the picking.
+//
+// FIRST RULE THAT MATCHES WINS, and the order is the whole design: the narrow, defining
+// categories sit above the broad ones. HYPE is tagged both "Perpetuals" and "Layer 1 (L1)";
+// Perpetuals is higher, so HYPE reads as a perp DEX rather than as an L1 next to SOL.
+// "Neobank" sits above "Restaking" on purpose - it is what puts XPL and ETHFI in one
+// slice. Move that line below the Restaking rules and ETHFI becomes "Restaking / LST"
+// while XPL stays "Neobank / Payments"; that single line is the whole knob.
+const CG_SECTOR_RULES = [
+  ['Perpetuals',                         'Perp DEX'],
+  ['Neobank',                            'Neobank / Payments'],
+  ['Yield Tokenization Protocol',        'Yield / Vaults'],
+  ['Restaking',                          'Restaking / LST'],
+  ['Liquid Restaking Governance Tokens', 'Restaking / LST'],
+  ['Liquid Staking Tokens',              'Restaking / LST'],
+  ['Liquid Staking Governance Tokens',   'Restaking / LST'],
+  ['Oracle',                             'Oracles'],
+  ['DePIN',                              'DePIN'],
+  ['Artificial Intelligence (AI)',       'AI Crypto'],
+  ['AI Agents',                          'AI Crypto'],
+  ['Meme',                               'Memecoins'],
+  ['Stablecoin Issuer',                  'Stablecoins'],
+  ['Stablecoin Protocol',                'Stablecoins'],
+  ['Stablecoins',                        'Stablecoins'],
+  ['Real World Assets (RWA)',            'RWA'],
+  ['Tokenized Treasury Bills',           'RWA'],
+  ['Privacy Coins',                      'Privacy'],
+  ['Gaming (GameFi)',                    'Gaming / NFT'],
+  ['NFT',                                'Gaming / NFT'],
+  ['Bridge Governance Tokens',           'Bridge / Interop'],
+  ['Cross-chain Communication',          'Bridge / Interop'],
+  ['Yield Aggregator',                   'Yield / Vaults'],
+  ['Yield Farming',                      'Yield / Vaults'],
+  ['Yield Tokenized',                    'Yield / Vaults'],
+  ['Lending/Borrowing',                  'Lending'],
+  ['Decentralized Exchange (DEX)',       'DEX / AMM'],
+  ['Automated Market Maker (AMM)',       'DEX / AMM'],
+  // Below the DEX rules on purpose: CoinGecko puts "Exchange-based Tokens" on DEX
+  // governance tokens (AERO, PENDLE) as well as on CEX tokens, so a DEX must read as a
+  // DEX first. Only a pure exchange token, with no DEX tag, reaches this line.
+  ['Exchange-based Tokens',              'Exchange Tokens'],
+  ['Data Availability',                  'L2 / Scaling'],
+  ['Layer 2 (L2)',                       'L2 / Scaling'],
+  ['Zero Knowledge (ZK)',                'L2 / Scaling'],
+  ['Layer 1 (L1)',                       'L1'],
+  ['Smart Contract Platform',            'L1'],
+  ['Decentralized Finance (DeFi)',       'DeFi'],
+];
+
+// Coins CoinGecko has no categories for (too new, or listed untagged - MEGA and NOS both
+// come back with none) plus the odd one it tags in a way that reads wrong in a portfolio.
+// Checked before the API, so these never cost a request.
+const CRYPTO_SECTOR_FALLBACK = {
+  BTC:  'Store of Value',
+  MEGA: 'L2 / Scaling',
+  NOS:  'DePIN',
+};
+
+// Sector values the app may overwrite with a looked-up one. Anything else in the field
+// was typed by hand (or is a stock / physical sector) and is left alone forever.
+const AUTO_SECTORS = new Set(['', 'Crypto', 'Crypto L1', 'Other']);
+const isAutoSector = v => AUTO_SECTORS.has((v || '').trim());
+
+// The CoinGecko id a position actually prices off - KNOWN_PRICE_SOURCES wins over the
+// stored one, exactly as in fetchPrices().
+function resolvedCgId(p) {
+  if (!p || p.physical) return null;
+  const known = KNOWN_PRICE_SOURCES[(p.ticker || '').toUpperCase()];
+  return (known && known.coingeckoId) || p.coingeckoId || null;
+}
+
+// One sector out of a coin's category list, or null if nothing in it is recognised.
+function sectorFromCgCategories(cats) {
+  if (!Array.isArray(cats)) return null;
+  const have = new Set(cats.filter(c => typeof c === 'string'));
+  for (const rule of CG_SECTOR_RULES) if (have.has(rule[0])) return rule[1];
+  return null;
+}
+
+// Fill in every auto-assignable sector we already know, from the fallback table and from
+// the cache an earlier run's API calls filled. Sync and offline - runs on every load.
+// Returns true if anything changed, so the caller knows whether to save.
+function applyCryptoSectors() {
+  let changed = false;
+  portfolio.forEach(p => {
+    if (p.physical || !isAutoSector(p.sector)) return;
+    const cgId   = resolvedCgId(p);
+    const sector = CRYPTO_SECTOR_FALLBACK[(p.ticker || '').toUpperCase()]
+                || (cgId ? cryptoSectorCache[cgId] : null);
+    if (sector && sector !== p.sector) { p.sector = sector; changed = true; }
+  });
+  return changed;
+}
+
+// Look up the sectors we do not have yet. One call per coin - the batch price endpoint
+// carries no categories - so it is deliberately slow and cached forever: a coin's sector
+// does not move, and CoinGecko's free tier throttles hard above ~10 calls a minute.
+// `force` re-fetches coins already in the cache; the manual button passes it.
+// CoinGecko's public tier starts returning 429 after roughly three calls in quick
+// succession, so the gap between coins is generous. Nothing waits on this - the donut is
+// already on screen and re-renders when the answers land.
+const SECTOR_FETCH_GAP_MS = 6500;
+
+async function fetchCryptoSectors(force) {
+  const ids = [];
+  portfolio.forEach(p => {
+    if (p.physical) return;
+    if (!force && !isAutoSector(p.sector)) return;
+    if (CRYPTO_SECTOR_FALLBACK[(p.ticker || '').toUpperCase()]) return;
+    const id = resolvedCgId(p);
+    if (id && (force || !(id in cryptoSectorCache)) && ids.indexOf(id) === -1) ids.push(id);
+  });
+  if (!ids.length) return 0;
+
+  let found = 0;
+  for (const id of ids) {
+    try {
+      const url = 'https://api.coingecko.com/api/v3/coins/' + encodeURIComponent(id)
+                + '?localization=false&tickers=false&market_data=false'
+                + '&community_data=false&developer_data=false&sparkline=false';
+      let res = await fetch(url);
+      if (res.status === 429) {
+        // Rate-limited. One slow retry, then give up on this coin - it stays uncached and
+        // the next session (or the sync button) picks it up.
+        await new Promise(r => setTimeout(r, SECTOR_FETCH_GAP_MS * 4));
+        res = await fetch(url);
+      }
+      if (!res.ok) continue;
+      const data   = await res.json();
+      const sector = sectorFromCgCategories(data && data.categories);
+      // Cache a miss as null too, or an uncategorised coin is re-fetched on every load.
+      cryptoSectorCache[id] = sector;
+      if (sector) found++;
+    } catch (e) { console.warn('CoinGecko sector fetch failed for', id, e); }
+    await new Promise(r => setTimeout(r, SECTOR_FETCH_GAP_MS));
+  }
+  applyCryptoSectors();
+  saveState();
+  renderAllSafe();
+  return found;
+}
+
+// The "sectors" button: re-checks every coin, including ones already tagged.
+async function refreshCryptoSectors() {
+  showUndoToast('Looking up sectors on CoinGecko...');
+  const before = portfolio.map(p => p.sector);
+  const found  = await fetchCryptoSectors(true);
+  const moved  = portfolio.filter((p, i) => p.sector !== before[i]).length;
+  showUndoToast(moved
+    ? 'Sectors updated - ' + moved + ' position' + (moved > 1 ? 's' : '') + ' re-tagged'
+    : (found ? 'Sectors already up to date'
+             : 'No sectors found - CoinGecko may be rate-limiting, try again in a minute'));
+}
+
+// What a position is grouped under in the sector donut.
+const displaySector = p => ((p && p.sector) || '').trim() || 'Unsectored';
+
+// A sector's slice colour. Sectors typed by hand are not in SECTOR_COLORS, so they get a
+// palette colour picked by name - stable, so the same sector keeps its colour every render.
+function sectorColor(name) {
+  const known = SECTOR_COLORS[name];
+  if (known) return known.color;
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return COLOR_PALETTE[h % COLOR_PALETTE.length].color;
+}
 
 // ── KNOWN PRICE SOURCES ─────────────────────────────────────────────────────
 
@@ -2201,6 +2405,16 @@ let fxSource = 'fallback';
 let pricesLastUpdated = null;
 
 let activeTab = 'portfolio';
+// coingeckoId -> sector name, or null for "CoinGecko has no usable category for this".
+// A lookup cache, not user data: persisted so the one-call-per-coin lookup happens once,
+// but deliberately absent from snapState() - undo must not roll a cache back.
+let cryptoSectorCache = {};
+// 'asset' = one slice per position (the original donut), 'sector' = slices grouped by
+// sector. A preference, like historyLogScale - persisted, not snapshotted.
+let donutGroupMode = 'asset';
+// The sector lookup is lazy: nothing hits CoinGecko until the sector donut is actually
+// drawn, and then only once a session. Someone who never opens the view never pays for it.
+let sectorLookupTried = false;
 let portfolio = [];
 let cashPositions = [];
 let closedTrades = [];
@@ -2484,12 +2698,15 @@ function loadState() {
   privacyMode          = saved.privacyMode || false;
   historyWindow        = (saved.historyWindow in HISTORY_WINDOWS) ? saved.historyWindow : 'all';
   historyLogScale      = saved.historyLogScale || false;
+  cryptoSectorCache    = saved.cryptoSectorCache || {};
+  donutGroupMode       = saved.donutGroupMode === 'sector' ? 'sector' : 'asset';
   showWithdrawalAdj    = saved.showWithdrawalAdj !== false; // on unless explicitly turned off
   if (saved.fxRates) {
     fxRates = { ...FALLBACK_RATES, ...saved.fxRates };
     fxLastUpdated = saved.fxLastUpdated ? new Date(saved.fxLastUpdated) : null;
     fxSource = saved.fxSource || 'fallback';
   }
+  applyCryptoSectors(); // offline pass: fallback table + whatever the cache already holds
 }
 
 function saveState() {
@@ -2534,6 +2751,7 @@ function buildStateJson() {
     airdrops, nextAirdropId,
     activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode,
     historyWindow, historyLogScale, showWithdrawalAdj, paletteVersion: PALETTE_VERSION,
+    cryptoSectorCache, donutGroupMode,
     savedAt: Date.now() // informational only — tells two same-day backup files apart
   });
 }
@@ -4475,6 +4693,10 @@ function submitAddAsset() {
   pushUndo(`add ${ticker}`);
   portfolio.push({ name, ticker, sector, units, entryPrice: entry, currentPrice: current, targetPrice, invalidationPrice, currency, color, bg, thesis: thesis || '', leveraged, marginUSD, showThesis, coingeckoId, yahooTicker, direction: leveraged ? _addDirection : null, openedDate: today(), posId: nextPosId++ });
 
+  // A coin added after this session's one-shot lookup would otherwise sit untagged until
+  // the next reload, so look this one up now. Free when the sector is already known.
+  if (!applyCryptoSectors()) fetchCryptoSectors(false);
+
   // subtract position cost from selected cash holding
   if (!leveraged) {
     const fundCashId = parseInt(document.getElementById('f-fund-cash').value);
@@ -4496,14 +4718,10 @@ function submitAddAsset() {
 
 // ── CHARTS ──────────────────────────────────────────────────────────────────
 
-function renderCharts(data) {
-  const th = chartTheme();
-  // Skip rebuild if portfolio tab is hidden — canvas has no dimensions and Chart.js breaks
-  const tab = document.getElementById('tab-portfolio');
-  if (tab && !tab.classList.contains('active')) return;
-
-  const cash = cashTotalUSD(data);
-
+// The allocation donut in its default shape: one slice per open position, plus Cash.
+// Same-ticker spot and perp legs sit adjacent and share a colour, split by a white
+// divider, and the legend/tooltip fold them back into a single combined figure.
+function renderAssetDonut(data, cash, th) {
   // Group same tickers adjacent: spot before leveraged
   const tickerTotals = {};
   data.forEach(p => { tickerTotals[p.ticker] = (tickerTotals[p.ticker] || 0) + p.equityValue; });
@@ -4521,10 +4739,6 @@ function renderCharts(data) {
   sorted.forEach(p => { if (!p.leveraged) spotColorByTicker[p.ticker] = p.color; });
   const donutColors = [...sorted.map(p => (p.leveraged && spotColorByTicker[p.ticker]) ? spotColorByTicker[p.ticker] : p.color), CASH_COLOR];
   const totalValue  = donutValues.reduce((a, b) => a + b, 0);
-
-  const trueNetWorth = data.reduce((s, p) => s + p.equityValue, 0) + cash;
-  const donutLbl = document.getElementById('donutTotalLabel');
-  if (donutLbl) donutLbl.textContent = fmtUsd(trueNetWorth);
 
   // Plugin: white divider line + leverage label between same-ticker slices
   const leverageDividerPlugin = {
@@ -4670,6 +4884,117 @@ function renderCharts(data) {
       }
     }
   });
+}
+
+// The same donut grouped by sector - what shows how much of the book rides on one
+// narrative rather than one ticker. Slices are notional (currentValue), matching the
+// asset donut, so a perp counts at full market exposure and a hedge does not net out.
+// No leverage divider here: two legs of the same ticker are the same sector, so they
+// belong in one arc.
+function renderSectorDonut(data, cash, th) {
+  if (!sectorLookupTried) {
+    sectorLookupTried = true;
+    fetchCryptoSectors(false); // fire and forget; it re-renders itself if it finds anything
+  }
+  const totals = {};
+  data.forEach(p => {
+    const s = displaySector(p);
+    totals[s] = (totals[s] || 0) + Math.max(0, p.currentValue);
+  });
+  const entries = Object.keys(totals)
+    .filter(k => totals[k] > 0)
+    .sort((a, b) => totals[b] - totals[a])
+    .map(k => [k, totals[k]]);
+  if (cash > 0) entries.push(['Cash', cash]);
+
+  const labels     = entries.map(e => e[0]);
+  const values     = entries.map(e => e[1]);
+  const colors     = labels.map(l => l === 'Cash' ? CASH_COLOR : sectorColor(l));
+  const totalValue = values.reduce((a, b) => a + b, 0);
+  const counts     = {};
+  data.forEach(p => { const s = displaySector(p); counts[s] = (counts[s] || 0) + 1; });
+
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(document.getElementById('donutChart'), {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderColor: th.pageBg,
+        borderWidth: 3,
+        hoverBorderWidth: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            color: th.text,
+            font: { family: 'Inter', size: 12 },
+            padding: 14,
+            boxWidth: 10,
+            boxHeight: 10,
+            usePointStyle: true,
+            pointStyle: 'rect',
+          }
+        },
+        tooltip: {
+          backgroundColor: th.tooltipBg,
+          borderColor: th.tooltipBorder,
+          borderWidth: 1,
+          titleColor: th.text,
+          bodyColor: th.body,
+          padding: 12,
+          callbacks: {
+            label: ctx => {
+              const pct = totalValue > 0 ? ((ctx.raw / totalValue) * 100).toFixed(1) : '0.0';
+              const n   = counts[String(ctx.label)] || 0;
+              const who = n > 1 ? '  \u00b7 ' + n + ' positions' : '';
+              return '  ' + fmtUsd(ctx.raw) + '  (' + pct + '%)' + who;
+            },
+          }
+        }
+      }
+    }
+  });
+}
+
+// Flip the donut between per-position and per-sector. Persisted, so it survives a reload.
+function toggleDonutGroup() {
+  donutGroupMode = donutGroupMode === 'sector' ? 'asset' : 'sector';
+  saveState();
+  renderAll();
+}
+
+function updateDonutGroupBtn() {
+  const btn = document.getElementById('donutGroupBtn');
+  if (!btn) return;
+  btn.textContent = donutGroupMode === 'sector' ? 'by asset' : 'by sector';
+  btn.classList.toggle('active', donutGroupMode === 'sector');
+}
+
+
+function renderCharts(data) {
+  const th = chartTheme();
+  // Skip rebuild if portfolio tab is hidden — canvas has no dimensions and Chart.js breaks
+  const tab = document.getElementById('tab-portfolio');
+  if (tab && !tab.classList.contains('active')) return;
+
+  const cash = cashTotalUSD(data);
+
+  const trueNetWorth = data.reduce((s, p) => s + p.equityValue, 0) + cash;
+  const donutLbl = document.getElementById('donutTotalLabel');
+  if (donutLbl) donutLbl.textContent = fmtUsd(trueNetWorth);
+
+  updateDonutGroupBtn();
+  if (donutGroupMode === 'sector') renderSectorDonut(data, cash, th);
+  else                             renderAssetDonut(data, cash, th);
 
   // Bar
   // One bar per position: spot measured on cost basis, perps on margin.
