@@ -1758,62 +1758,14 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       </div>
       <div class="form-group" id="f-ticker-group">
         <label class="form-label">Ticker</label>
-        <input class="form-input" id="f-ticker" placeholder="e.g. BTC" oninput="this.value=this.value.toUpperCase()" />
+        <input class="form-input" id="f-ticker" placeholder="e.g. BTC" oninput="this.value=this.value.toUpperCase();suggestSector()" />
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Sector</label>
-        <input class="form-input" id="f-sector" placeholder="e.g. Crypto, Technology" list="sector-list" />
-        <datalist id="sector-list">
-          <option value="Crypto"><option value="Technology"><option value="Semiconductors">
-          <option value="AI Infra"><option value="Financials"><option value="Healthcare">
-          <option value="Biotech"><option value="Energy"><option value="Clean Energy">
-          <option value="Consumer"><option value="Industrials"><option value="Real Estate">
-          <option value="Commodities"><option value="Fixed Income">
-          <!-- Chains -->
-          <option value="Layer 1">
-          <option value="Layer 2 &amp; Rollups">
-          <option value="Modular &amp; DA">
-          <!-- Trading -->
-          <option value="Perp DEXs">
-          <option value="Spot DEXs">
-          <option value="Prediction Markets">
-          <option value="Options &amp; Structured">
-          <!-- Yield &amp; Credit -->
-          <option value="Lending">
-          <option value="Liquid Staking">
-          <option value="Liquid Restaking">
-          <option value="Yield Tokenization">
-          <!-- Stablecoins &amp; Payments -->
-          <option value="Stablechains">
-          <option value="Stablecoin Issuers">
-          <option value="Crypto Neobanks">
-          <option value="Payment Rails">
-          <!-- Infrastructure -->
-          <option value="Oracles &amp; Data">
-          <option value="Bridges &amp; Interop">
-          <option value="Restaking &amp; Security">
-          <option value="Privacy">
-          <!-- DePIN &amp; AI -->
-          <option value="Decentralized Compute">
-          <option value="Physical DePIN">
-          <option value="AI Agents">
-          <option value="Storage">
-          <!-- Assets &amp; Culture -->
-          <option value="Store of Value">
-          <option value="RWA &amp; Tokenized">
-          <option value="Memecoins">
-          <option value="Gaming &amp; NFT">
-          <option value="Exchange Tokens">
-          <option value="Launchpads &amp; Attention">
-        </datalist>
-        <datalist id="physical-sector-list">
-          <option value="Vehicle"><option value="Real Estate"><option value="Jewelry">
-          <option value="Watches"><option value="Art"><option value="Collectibles">
-          <option value="Electronics"><option value="Furniture"><option value="Boat">
-          <option value="Precious Metals"><option value="Other">
-        </datalist>
+        <select class="form-input" id="f-sector-select" onchange="onSectorPick()"></select>
+        <input class="form-input" id="f-sector" placeholder="Type a custom sector" style="display:none;margin-top:6px" />
       </div>
       <div class="form-group" id="f-units-group">
         <label class="form-label">Units / Amount Held</label>
@@ -2426,6 +2378,46 @@ const CG_SECTOR_RULES = [
   ['Layer 1 (L1)',                       'Layer 1'],
   ['Smart Contract Platform',            'Layer 1'],
 ];
+
+// -- SECTOR PICKER -----------------------------------------------------------
+// The dropdown is built from CRYPTO_TAXONOMY rather than written out by hand, so the
+// picker can never drift from the taxonomy (the datalist it replaced already had).
+// One <optgroup> per theme keeps 30-odd crypto sectors readable; "Auto" is the default
+// and leaves the field blank so applyCryptoSectors tags it from the ticker.
+// f-sector stays the field every submit path reads - the select just writes into it.
+const STOCK_SECTORS = ['Technology', 'Semiconductors', 'AI Infra', 'Financials', 'Healthcare',
+  'Biotech', 'Energy', 'Clean Energy', 'Consumer', 'Industrials', 'Real Estate',
+  'Commodities', 'Fixed Income'];
+const PHYSICAL_SECTORS = ['Vehicle', 'Real Estate', 'Jewelry', 'Watches', 'Art', 'Collectibles',
+  'Electronics', 'Furniture', 'Boat', 'Precious Metals', 'Other'];
+
+function sectorOptionsHtml(physical) {
+  const opt = s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`;
+  const custom = `<option value="__custom">Custom...</option>`;
+  if (physical) return `<option value="">Physical (unsorted)</option>` + PHYSICAL_SECTORS.map(opt).join('') + custom;
+  return `<option value="">Auto - detect from ticker</option>`
+    + `<optgroup label="Stocks &amp; Funds">${STOCK_SECTORS.map(opt).join('')}</optgroup>`
+    + CRYPTO_TAXONOMY.map(t => `<optgroup label="${escHtml(t.theme)}">${t.sectors.map(opt).join('')}</optgroup>`).join('')
+    + custom;
+}
+
+function onSectorPick() {
+  const sel = document.getElementById('f-sector-select');
+  const inp = document.getElementById('f-sector');
+  if (sel.value === '__custom') { inp.style.display = ''; inp.value = ''; inp.focus(); }
+  else { inp.style.display = 'none'; inp.value = sel.value; }
+}
+
+// Show what "Auto" resolves to as soon as a ticker is typed, so the dropdown can be left
+// alone for any coin the curated table (or a cached CoinGecko lookup) already knows.
+function suggestSector() {
+  const sel = document.getElementById('f-sector-select');
+  if (_addMode === 'physical' || !sel.options || !sel.options.length) return;
+  const t  = (document.getElementById('f-ticker').value || '').trim().toUpperCase();
+  const cg = KNOWN_PRICE_SOURCES[t] && KNOWN_PRICE_SOURCES[t].coingeckoId;
+  const guess = CURATED_SECTORS[t] || (cg ? cryptoSectorCache[cg] : null);
+  sel.options[0].textContent = guess ? 'Auto - ' + guess : 'Auto - detect from ticker';
+}
 
 // Sector values the app may overwrite with a looked-up one. Anything else in the field was
 // typed by hand (or is a stock / physical sector) and is left alone forever. The first
@@ -4780,8 +4772,11 @@ function showAddModal(mode) {
     : 'Avg Entry Price';
   document.getElementById('lbl-current').textContent = physical ? 'Current Value' : 'Current Price';
   document.getElementById('f-name').placeholder    = physical ? 'e.g. Tesla Model 3' : 'e.g. Bitcoin';
+  const secSel = document.getElementById('f-sector-select');
+  secSel.innerHTML = sectorOptionsHtml(physical);
+  secSel.value = '';
+  document.getElementById('f-sector').style.display = 'none';
   document.getElementById('f-sector').placeholder  = physical ? 'e.g. Vehicle, Real Estate' : 'e.g. Crypto, Technology';
-  document.getElementById('f-sector').setAttribute('list', physical ? 'physical-sector-list' : 'sector-list');
   document.getElementById('f-entry').placeholder   = physical ? 'what you paid' : 'e.g. 45000';
   document.getElementById('f-current').placeholder = physical ? 'e.g. 50000' : 'e.g. 95000';
   setAddDirection('long');
@@ -4806,6 +4801,8 @@ function hideAddModal() {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-currency').value = 'USD';
+  document.getElementById('f-sector-select').value = '';
+  document.getElementById('f-sector').style.display = 'none';
   document.getElementById('f-error').textContent = '';
   document.getElementById('f-show-thesis').checked = true;
   document.getElementById('leverage-fields').style.display = 'none';
