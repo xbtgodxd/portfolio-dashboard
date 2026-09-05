@@ -1308,10 +1308,16 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
   <div id="closedTradesSection">
     <div class="section-header">
       <div class="section-title">Closed Trades</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="add-asset-btn" onclick="showPastTradeModal()" title="Manually log a trade you closed before (or outside) this dashboard">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Log Past Trade
+      </button>
       <button class="add-asset-btn" onclick="exportClosedTradesCsv()" title="Download all closed trades as a spreadsheet (CSV) file">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Export CSV
       </button>
+      </div>
     </div>
     <div class="card" style="padding:20px 24px" id="closedTradesCard"></div>
   </div>
@@ -1897,6 +1903,118 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="form-actions">
       <button class="btn-secondary" onclick="hideCloseModal()">Cancel</button>
       <button class="btn-primary" onclick="submitClosePosition()">Close Position</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOG PAST TRADE MODAL (backfill a closed trade that never lived in the dashboard) -->
+<div class="modal-overlay" id="pastTradeModal" onclick="if(event.target===this)hidePastTradeModal()">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div class="modal-title">Log Past Trade</div>
+      <button class="modal-close" onclick="hidePastTradeModal()">&#10005;</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6">
+      Adds a trade straight to the closed log &mdash; for positions you closed before you used this
+      dashboard, or never entered at all. It slots in by close date and counts toward the stats above.
+      <strong style="color:var(--text2)">It does not touch cash, net worth or history.</strong>
+      Only the name, P&amp;L and close date are required.
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Name *</label>
+        <input class="form-input" id="pt-name" placeholder="e.g. Fartcoin" oninput="onPastTradeNameInput()" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ticker <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+        <input class="form-input" id="pt-ticker" placeholder="auto from name" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Sector</label>
+        <select class="form-input" id="pt-sector-select" onchange="onPastTradeSectorPick()"></select>
+        <input class="form-input" id="pt-sector" placeholder="Type a custom sector" style="display:none;margin-top:6px" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type</label>
+        <select class="form-input" id="pt-direction">
+          <option value="">Spot</option>
+          <option value="long">Perp &mdash; Long</option>
+          <option value="short">Perp &mdash; Short</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Opened <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+        <input class="form-input" id="pt-opened" type="date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Closed *</label>
+        <input class="form-input" id="pt-closed" type="date" />
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:var(--text3);margin:2px 0 10px;line-height:1.5">
+      Units and prices are optional &mdash; fill them in and the P&amp;L below is worked out for you.
+      Skip them if you only remember the result, and just type the P&amp;L.
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label class="form-label">Units</label>
+        <input class="form-input" id="pt-units" type="number" step="any" min="0" oninput="updatePastTradeDerived()" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Entry Price</label>
+        <input class="form-input" id="pt-entry" type="number" step="any" min="0" oninput="updatePastTradeDerived()" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Exit Price</label>
+        <input class="form-input" id="pt-exit" type="number" step="any" min="0" oninput="updatePastTradeDerived()" />
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label class="form-label">P&amp;L (USD) *</label>
+        <input class="form-input" id="pt-pnl" type="number" step="any" placeholder="e.g. 7000" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">P&amp;L % <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+        <input class="form-input" id="pt-pct" type="number" step="any" placeholder="e.g. 320" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Currency</label>
+        <select class="form-input" id="pt-currency" onchange="updatePastTradeDerived()">
+          <option value="USD">USD &mdash; US Dollar ($)</option>
+          <option value="DKK">DKK (kr)</option>
+          <option value="NOK">NOK &mdash; Norwegian Krone (kr)</option>
+          <option value="SEK">SEK &mdash; Swedish Krone (kr)</option>
+          <option value="EUR">EUR &mdash; Euro (&euro;)</option>
+          <option value="GBP">GBP &mdash; British Pound (&pound;)</option>
+          <option value="CHF">CHF &mdash; Swiss Franc</option>
+          <option value="JPY">JPY &mdash; Japanese Yen (&yen;)</option>
+          <option value="AUD">AUD &mdash; Australian Dollar</option>
+          <option value="CAD">CAD &mdash; Canadian Dollar</option>
+        </select>
+      </div>
+    </div>
+    <div id="pt-derived-hint" style="font-size:11px;color:var(--text3);margin:-4px 0 12px;min-height:16px"></div>
+
+    <div class="form-group">
+      <label class="form-label">Outcome <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+      <input class="form-input" id="pt-outcome" placeholder="e.g. Pure gamble, sold into the top wick" />
+    </div>
+
+    <div class="form-error" id="pt-error"></div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="hidePastTradeModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitPastTradeEntry()">Add to Closed Trades</button>
     </div>
   </div>
 </div>
@@ -4077,10 +4195,154 @@ function submitClosePosition() {
   renderAll();
 }
 
+// A backfilled trade may carry no prices at all (see showPastTradeModal) — every closed-trade
+// cell has to survive a null/undefined number rather than blowing up inside toFixed().
+function fmtNativeOrDash(price, currency) {
+  return (typeof price === 'number' && isFinite(price) && price > 0) ? fmtNative(price, currency) : '—';
+}
+function fmtPctOrDash(pct) {
+  if (typeof pct !== 'number' || !isFinite(pct)) return '—';
+  return (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+}
+
 function holdDays(t) {
   if (!t.openedDate || !t.closedDate) return null;
   const d = Math.round((new Date(t.closedDate) - new Date(t.openedDate)) / 86400000);
   return d >= 0 ? d : null;
+}
+
+// ── LOG PAST TRADE (backfill) ───────────────────────────────────────────────
+// Trades closed before (or entirely outside) the dashboard. Deliberately *log only*: it
+// never touches cash, net worth or the history series — the money already left the book by
+// whatever route, and double-counting it here would silently inflate net worth. Everything
+// except name / P&L $ / close date is optional, because the usual case is a punt you never
+// entered anywhere and only remember the result of.
+
+// Keep closedTrades in newest-first close-date order. submitClosePosition can unshift
+// because it always closes on today(); a backfill has to slot into the middle instead.
+function insertClosedTrade(t) {
+  let i = closedTrades.findIndex(x => (x.closedDate || '') < (t.closedDate || ''));
+  if (i < 0) i = closedTrades.length;
+  closedTrades.splice(i, 0, t);
+  return i;
+}
+
+function pastTradeDirSign() {
+  return document.getElementById('pt-direction').value === 'short' ? -1 : 1;
+}
+
+// Prices are a convenience, not the source of truth: whatever they work out to is written
+// into the P&L fields, which stay hand-editable afterwards.
+function updatePastTradeDerived() {
+  const num  = id => parseFloat(document.getElementById(id).value);
+  const units = num('pt-units'), entry = num('pt-entry'), exit = num('pt-exit');
+  const cur   = document.getElementById('pt-currency').value || 'USD';
+  const rate  = fxRates[cur.toUpperCase()] ?? 1;
+  const dir   = pastTradeDirSign();
+  const hint  = document.getElementById('pt-derived-hint');
+  const bits  = [];
+  if (entry > 0 && exit > 0) {
+    const pct = dir * (exit - entry) / entry * 100;
+    document.getElementById('pt-pct').value = pct.toFixed(2);
+    bits.push('% from entry vs exit');
+    if (units > 0) {
+      const pnl = dir * units * (exit - entry) * rate;
+      document.getElementById('pt-pnl').value = pnl.toFixed(2);
+      bits.push('P&L from units × price move' + (cur !== 'USD' ? ` (converted at today's ${cur} rate)` : ''));
+    }
+  }
+  if (hint) hint.textContent = bits.length ? 'Auto-filled: ' + bits.join(', ') + ' — override either by typing.' : '';
+}
+
+function onPastTradeSectorPick() {
+  const sel = document.getElementById('pt-sector-select');
+  const inp = document.getElementById('pt-sector');
+  if (sel.value === '__custom') { inp.style.display = ''; inp.value = ''; inp.focus(); }
+  else { inp.style.display = 'none'; inp.value = sel.value; }
+}
+
+// "Fartcoin" → FARTC. Only a fallback: the ticker field wins whenever it is filled in.
+function derivePastTradeTicker(name) {
+  const clean = (name || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  return clean ? clean.slice(0, 5) : 'TRADE';
+}
+
+function onPastTradeNameInput() {
+  const t = document.getElementById('pt-ticker');
+  t.placeholder = derivePastTradeTicker(document.getElementById('pt-name').value);
+}
+
+function showPastTradeModal() {
+  ['pt-name','pt-ticker','pt-sector','pt-units','pt-entry','pt-exit','pt-pnl','pt-pct','pt-outcome','pt-opened']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('pt-sector-select').innerHTML = sectorOptionsHtml(false);
+  document.getElementById('pt-sector-select').value = '';
+  document.getElementById('pt-sector').style.display = 'none';
+  document.getElementById('pt-direction').value = '';
+  document.getElementById('pt-currency').value = 'USD';
+  document.getElementById('pt-closed').value = today();
+  document.getElementById('pt-ticker').placeholder = 'auto from name';
+  document.getElementById('pt-derived-hint').textContent = '';
+  document.getElementById('pt-error').textContent = '';
+  document.getElementById('pastTradeModal').classList.add('open');
+  document.getElementById('pt-name').focus();
+}
+
+function hidePastTradeModal() {
+  document.getElementById('pastTradeModal').classList.remove('open');
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function submitPastTradeEntry() {
+  const err  = document.getElementById('pt-error');
+  const val  = id => document.getElementById(id).value.trim();
+  const num  = id => { const n = parseFloat(document.getElementById(id).value); return isFinite(n) ? n : null; };
+  const name = val('pt-name');
+  const closedDate = val('pt-closed');
+  const openedDate = val('pt-opened');
+  const pnl  = num('pt-pnl');
+
+  if (!name)                        { err.textContent = 'Give the trade a name.'; return; }
+  if (pnl === null)                 { err.textContent = 'Enter the P&L in USD (negative for a loss).'; return; }
+  if (!ISO_DATE_RE.test(closedDate)){ err.textContent = 'Enter the date you closed the trade.'; return; }
+  if (openedDate && !ISO_DATE_RE.test(openedDate)) { err.textContent = 'Opened date is not a valid date.'; return; }
+  if (openedDate && openedDate > closedDate)       { err.textContent = 'Opened date is after the close date.'; return; }
+
+  const ticker = (val('pt-ticker') || derivePastTradeTicker(name)).toUpperCase();
+  const pos    = portfolio.find(p => p.ticker === ticker) || closedTrades.find(t => t.ticker === ticker);
+  const { color, bg } = pos ? { color: pos.color, bg: pos.bg } : nextColorFor(ticker);
+  const entry  = num('pt-entry'), exit = num('pt-exit');
+  let pct = num('pt-pct');
+  if (pct === null && entry > 0 && exit > 0) pct = pastTradeDirSign() * (exit - entry) / entry * 100;
+
+  pushUndo(`log past trade ${ticker}`);
+  const idx = insertClosedTrade({
+    posId:       nextPosId++,
+    name,
+    ticker,
+    sector:      val('pt-sector') || 'Other',
+    color, bg,
+    units:       num('pt-units'),
+    entryPrice:  entry,
+    closePrice:  exit,
+    currency:    document.getElementById('pt-currency').value || 'USD',
+    direction:   document.getElementById('pt-direction').value || null,
+    totalPnlUsd: pnl,
+    pnlPct:      pct,
+    openedDate:  openedDate || null,
+    closedDate,
+    outcome:     val('pt-outcome') || null,
+    thesis:      null,
+    tradeLog:    [],
+    manual:      true,   // backfilled by hand, not closed through submitClosePosition
+  });
+
+  closedTradesPage = Math.floor(idx / CLOSED_TRADES_PAGE_SIZE) + 1;  // land on the page it slotted into
+  hidePastTradeModal();
+  saveState();
+  renderAll();
+  showUndoToast(`Logged ${ticker} ${pnl >= 0 ? '+' : ''}${fmtUsd(pnl)} on ${closedDate} ✓`);
 }
 
 function buildClosedTradesCsv() {
@@ -4088,7 +4350,8 @@ function buildClosedTradesCsv() {
   const header = ['Ticker','Name','Sector','Direction','Units','Entry Price','Close Price','Currency','P&L USD','P&L %','Opened','Closed','Held Days','Outcome','Thesis'];
   const rows = closedTrades.map(t => [
     t.ticker, t.name, t.sector, t.direction || 'spot', t.units, t.entryPrice, t.closePrice, t.currency || 'USD',
-    t.totalPnlUsd.toFixed(2), t.pnlPct.toFixed(2),
+    (typeof t.totalPnlUsd === 'number' ? t.totalPnlUsd.toFixed(2) : ''),
+    (typeof t.pnlPct === 'number' && isFinite(t.pnlPct) ? t.pnlPct.toFixed(2) : ''),
     t.openedDate || '', t.closedDate, holdDays(t) ?? '',
     t.outcome || '', t.thesis || ''
   ]);
@@ -4198,15 +4461,15 @@ function renderClosedTrades() {
             </div>
           </td>
           <td class="closed-outcome" style="text-align:left" onclick="this.classList.toggle('expanded')" title="Click to expand">${escHtml(t.outcome || '—')}${t.thesis ? `<div class="closed-thesis">Thesis at close: “${escHtml(t.thesis)}”</div>` : ''}</td>
-          <td>${fmtNative(t.entryPrice, t.currency)}</td>
+          <td>${fmtNativeOrDash(t.entryPrice, t.currency)}</td>
           <td>${(() => {
             const sells = (t.tradeLog || []).filter(e => e.side === 'sell');
             const { avgExit } = tradeLogAverages(t.tradeLog || []);
             const exit = avgExit != null ? avgExit : t.closePrice;
             const isAvg = sells.length >= 2;
-            return `${fmtNative(exit, t.currency)}${isAvg ? ` <span style="font-size:9px;color:var(--text3)" title="Weighted average exit across ${sells.length} sells, incl. partial TPs. Final close was ${fmtNative(t.closePrice, t.currency)}.">avg</span>` : ''}`;
+            return `${fmtNativeOrDash(exit, t.currency)}${isAvg ? ` <span style="font-size:9px;color:var(--text3)" title="Weighted average exit across ${sells.length} sells, incl. partial TPs. Final close was ${fmtNativeOrDash(t.closePrice, t.currency)}.">avg</span>` : ''}`;
           })()}</td>
-          <td><span class="closed-pnl ${t.pnlPct >= 0 ? 'pos' : 'neg'}">${t.pnlPct >= 0 ? '+' : ''}${t.pnlPct.toFixed(1)}%</span></td>
+          <td><span class="closed-pnl ${t.pnlPct >= 0 ? 'pos' : 'neg'}">${fmtPctOrDash(t.pnlPct)}</span></td>
           <td><span class="closed-pnl ${t.totalPnlUsd >= 0 ? 'pos' : 'neg'}">${fmtUsd(t.totalPnlUsd)}</span></td>
           <td style="color:var(--text3);font-size:11px">${t.closedDate}${holdDays(t) != null ? `<br><span style="font-size:10px;font-family:var(--mono)">held ${holdDays(t)}d</span>` : ''}</td>
           <td><button onclick="deleteClosedTrade(${pageStart + i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">×</button></td>
