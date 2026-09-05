@@ -404,6 +404,11 @@ tr:hover td { background: var(--bg3); }
 .pt-mode-btn.active { background: var(--cyand); border-color: var(--cyan); color: var(--cyan); }
 .pt-entry-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr 26px; gap: 8px; align-items: center; }
 .pt-flow-grid  { display: grid; grid-template-columns: 1.3fr 1.1fr 1.4fr 26px; gap: 8px; align-items: center; }
+.pt-sub-btn { background: var(--bg3); border: 1px solid var(--border); color: var(--text3);
+  font-family: var(--sans); font-size: 11px; font-weight: 600; padding: 4px 10px;
+  border-radius: 6px; cursor: pointer; transition: all 0.15s; }
+.pt-sub-btn:hover:not(.active) { color: var(--text2); border-color: var(--border2); }
+.pt-sub-btn.active { background: var(--cyand); border-color: var(--cyan); color: var(--cyan); }
 .pt-flow-grid .form-input { padding: 8px 9px; font-size: 12px; }
 .pt-entry-head { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--text3); margin-bottom: 6px; }
@@ -2047,8 +2052,15 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         Opened and Closed dates come from the first buy and the last sell, and the P&amp;L is worked
         out for you underneath.
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--text3)">Last column is:</span>
+        <button type="button" class="pt-sub-btn active" id="pt-amount-total" onclick="setPtAmountMode('total')"
+          title="What the fill cost or returned in total — the average price per unit is worked out for you">Total $ of the fill</button>
+        <button type="button" class="pt-sub-btn" id="pt-amount-unit" onclick="setPtAmountMode('unit')"
+          title="The price of one unit">Price per unit</button>
+      </div>
       <div class="pt-entry-grid pt-entry-head">
-        <div>Date</div><div>Side</div><div>Units</div><div>Price</div><div></div>
+        <div>Date</div><div>Side</div><div>Units</div><div id="pt-amount-head">Total</div><div></div>
       </div>
       <div id="pt-entry-rows"></div>
       <div style="display:flex;gap:8px;margin:2px 0 14px">
@@ -4269,6 +4281,16 @@ function submitClosePosition() {
 
 // A backfilled trade may carry no prices at all (see showPastTradeModal) — every closed-trade
 // cell has to survive a null/undefined number rather than blowing up inside toFixed().
+// fmtNative bottoms out at 5 decimals, which renders a memecoin's 0.0000043 as "0.00000".
+// Sub-cent prices get significant digits instead, so the avg cost line stays readable.
+function fmtPriceSmall(price, currency) {
+  if (!(typeof price === 'number' && isFinite(price) && price > 0)) return '—';
+  if (price >= 0.01) return fmtNative(price, currency);
+  const sym = { USD: '$', EUR: '€', GBP: '£', JPY: '¥' }[(currency || 'USD').toUpperCase()];
+  const n = price.toPrecision(3).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  return sym ? sym + n : n + ' ' + (currency || 'USD').toUpperCase();
+}
+
 function fmtNativeOrDash(price, currency) {
   return (typeof price === 'number' && isFinite(price) && price > 0) ? fmtNative(price, currency) : '—';
 }
@@ -4349,7 +4371,12 @@ function onPastTradeNameInput() {
 // Two ways in, because the two real cases are different: you either remember only the result
 // ('simple'), or you scaled in and out across several days and want the maths done ('log').
 let _ptMode = 'simple';
-let _ptEntries = [];   // [{ date, side: 'buy'|'sell', units, price }] — raw strings from the inputs
+// The last column of the log is whichever number you actually have. For a memecoin nobody
+// knows the per-unit price (it is 0.0000043); they know they put in $500 and got 114,551
+// units. 'total' is the default for that reason — price per unit is then derived, and the
+// weighted averages come out identical either way (units × total/units === total).
+let _ptAmountMode = 'total';   // 'total' = cash for the whole fill | 'unit' = price of one unit
+let _ptEntries = [];   // [{ date, side: 'buy'|'sell', units, amount }] — raw strings from the inputs
 let _ptFlows   = [];   // [{ date, side: 'in'|'out', amount }] — the units-free variant
 
 const PT_MODES = ['simple', 'log', 'cash'];
@@ -4369,8 +4396,18 @@ function setPastTradeMode(mode) {
   renderPtFlows();
 }
 
+function setPtAmountMode(mode) {
+  _ptAmountMode = mode === 'unit' ? 'unit' : 'total';
+  const tb = document.getElementById('pt-amount-total'), ub = document.getElementById('pt-amount-unit');
+  if (tb) tb.classList.toggle('active', _ptAmountMode === 'total');
+  if (ub) ub.classList.toggle('active', _ptAmountMode === 'unit');
+  const head = document.getElementById('pt-amount-head');
+  if (head) head.textContent = _ptAmountMode === 'total' ? 'Total' : 'Price / unit';
+  renderPtEntries();   // the placeholders change with the meaning of the column
+}
+
 function ptEntryAdd(side, quiet) {
-  _ptEntries.push({ date: '', side: side === 'sell' ? 'sell' : 'buy', units: '', price: '' });
+  _ptEntries.push({ date: '', side: side === 'sell' ? 'sell' : 'buy', units: '', amount: '' });
   if (!quiet) renderPtEntries();
 }
 
@@ -4399,7 +4436,7 @@ function renderPtEntries() {
         <option value="sell"${e.side === 'sell' ? ' selected' : ''}>Sell</option>
       </select>
       <input class="form-input" type="number" step="any" min="0" placeholder="units" value="${escHtml(e.units)}" oninput="ptEntryEdit(${i},'units',this.value)" />
-      <input class="form-input" type="number" step="any" min="0" placeholder="price" value="${escHtml(e.price)}" oninput="ptEntryEdit(${i},'price',this.value)" />
+      <input class="form-input" type="number" step="any" min="0" placeholder="${_ptAmountMode === 'total' ? 'total' : 'price'}" value="${escHtml(e.amount)}" oninput="ptEntryEdit(${i},'amount',this.value)" />
       <button type="button" class="pt-entry-del" title="Remove this row" onclick="ptEntryRemove(${i})">&#10005;</button>
     </div>`).join('');
   updatePastTradeDerived();
@@ -4487,8 +4524,14 @@ function renderPtCashSummary() {
 // and reused by both the live summary and the submit path.
 function ptLogDerived() {
   const rows = _ptEntries
-    .map(e => ({ date: (e.date || '').trim(), side: e.side === 'sell' ? 'sell' : 'buy',
-                 units: parseFloat(e.units), price: parseFloat(e.price) }))
+    .map(e => {
+      const units  = parseFloat(e.units);
+      const amount = parseFloat(e.amount);
+      // In 'total' mode the typed number is the cash for the whole fill, so the per-unit
+      // price is amount ÷ units. Everything below only ever sees a per-unit price.
+      const price  = _ptAmountMode === 'total' ? (units > 0 ? amount / units : NaN) : amount;
+      return { date: (e.date || '').trim(), side: e.side === 'sell' ? 'sell' : 'buy', units, price };
+    })
     .filter(e => ISO_DATE_RE.test(e.date) && isFinite(e.units) && e.units > 0 && isFinite(e.price) && e.price > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -4511,8 +4554,11 @@ function ptLogDerived() {
   const pnlUSD = dir * soldUnits * (avgExit - avgEntry) * rate;
   const pnlPct = dir * (avgExit - avgEntry) / avgEntry * 100;
 
+  const cost     = buys.reduce((s, e) => s + e.units * e.price, 0);
+  const proceeds = sells.reduce((s, e) => s + e.units * e.price, 0);
+
   return {
-    rows, buys, sells, avgEntry, avgExit, boughtUnits, soldUnits,
+    rows, buys, sells, avgEntry, avgExit, boughtUnits, soldUnits, cost, proceeds,
     leftover: boughtUnits - soldUnits,
     pnlUSD, pnlPct, currency: cur,
     openedDate: buys[0].date,
@@ -4533,8 +4579,9 @@ function renderPtLogSummary() {
   const sign = d.pnlUSD >= 0 ? '+' : '';
   const col  = d.pnlUSD >= 0 ? 'var(--green)' : 'var(--red)';
   box.innerHTML =
-    `Bought <b>${fmtUnits(d.boughtUnits)}</b> at avg <b>${fmtNative(d.avgEntry, cur)}</b>` +
-    ` &middot; sold <b>${fmtUnits(d.soldUnits)}</b> at avg <b>${fmtNative(d.avgExit, cur)}</b><br>` +
+    `Bought <b>${fmtUnits(d.boughtUnits)}</b> for <b>${fmtNative(d.cost, cur)}</b>` +
+    ` &middot; sold <b>${fmtUnits(d.soldUnits)}</b> for <b>${fmtNative(d.proceeds, cur)}</b><br>` +
+    `Avg cost <b>${fmtPriceSmall(d.avgEntry, cur)}</b> &middot; avg exit <b>${fmtPriceSmall(d.avgExit, cur)}</b><br>` +
     `Opened <b>${d.openedDate}</b> &middot; closed <b>${d.closedDate}</b>` +
     (d.leftover > 1e-9
       ? `<br><span style="color:var(--amber)">${fmtUnits(d.leftover)} never sold — the P&amp;L below only covers the units you sold.</span>`
@@ -4560,6 +4607,7 @@ function showPastTradeModal() {
   document.getElementById('pt-error').textContent = '';
   _ptEntries = [];
   _ptFlows = [];
+  setPtAmountMode('total');   // the number people actually have to hand
   setPastTradeMode('simple');
   document.getElementById('pastTradeModal').classList.add('open');
   document.getElementById('pt-name').focus();
