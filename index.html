@@ -396,6 +396,26 @@ tr:hover td { background: var(--bg3); }
 }
 .dir-btn.long.active  { background: var(--greend); border-color: var(--green); color: var(--green); }
 .dir-btn.short.active { background: var(--redd);  border-color: var(--red);  color: var(--red); }
+/* Log Past Trade: mode switch + the buy/sell entry rows it builds a trade out of */
+.pt-mode-btn { flex: 1; padding: 8px 0; border-radius: 8px; cursor: pointer;
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text3);
+  font-family: var(--sans); font-size: 12px; font-weight: 600; transition: all 0.15s; }
+.pt-mode-btn:hover:not(.active) { color: var(--text2); border-color: var(--border2); }
+.pt-mode-btn.active { background: var(--cyand); border-color: var(--cyan); color: var(--cyan); }
+.pt-entry-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr 26px; gap: 8px; align-items: center; }
+.pt-flow-grid  { display: grid; grid-template-columns: 1.3fr 1.1fr 1.4fr 26px; gap: 8px; align-items: center; }
+.pt-flow-grid .form-input { padding: 8px 9px; font-size: 12px; }
+.pt-entry-head { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text3); margin-bottom: 6px; }
+.pt-entry-row { margin-bottom: 8px; }
+.pt-entry-row .form-input { padding: 8px 9px; font-size: 12px; }
+.pt-entry-del { background: none; border: none; color: var(--text3); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 4px; border-radius: 4px; }
+.pt-entry-del:hover { color: var(--red); }
+.pt-derived { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; font-size: 11px; color: var(--text3); line-height: 1.7; margin-bottom: 14px; }
+.pt-derived b { color: var(--text2); font-family: var(--mono); font-weight: 600; }
+.pt-derived .pt-big { font-size: 15px; }
 input[type="range"] { accent-color: var(--cyan); }
 .lev-sub { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 1px; }
 .price-editable {
@@ -1932,7 +1952,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       </div>
     </div>
 
-    <div class="form-row">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
       <div class="form-group">
         <label class="form-label">Sector</label>
         <select class="form-input" id="pt-sector-select" onchange="onPastTradeSectorPick()"></select>
@@ -1940,53 +1960,11 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       </div>
       <div class="form-group">
         <label class="form-label">Type</label>
-        <select class="form-input" id="pt-direction">
+        <select class="form-input" id="pt-direction" onchange="updatePastTradeDerived()">
           <option value="">Spot</option>
           <option value="long">Perp &mdash; Long</option>
           <option value="short">Perp &mdash; Short</option>
         </select>
-      </div>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Opened <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
-        <input class="form-input" id="pt-opened" type="date" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Closed *</label>
-        <input class="form-input" id="pt-closed" type="date" />
-      </div>
-    </div>
-
-    <div style="font-size:11px;color:var(--text3);margin:2px 0 10px;line-height:1.5">
-      Units and prices are optional &mdash; fill them in and the P&amp;L below is worked out for you.
-      Skip them if you only remember the result, and just type the P&amp;L.
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-      <div class="form-group">
-        <label class="form-label">Units</label>
-        <input class="form-input" id="pt-units" type="number" step="any" min="0" oninput="updatePastTradeDerived()" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Entry Price</label>
-        <input class="form-input" id="pt-entry" type="number" step="any" min="0" oninput="updatePastTradeDerived()" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Exit Price</label>
-        <input class="form-input" id="pt-exit" type="number" step="any" min="0" oninput="updatePastTradeDerived()" />
-      </div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-      <div class="form-group">
-        <label class="form-label">P&amp;L (USD) *</label>
-        <input class="form-input" id="pt-pnl" type="number" step="any" placeholder="e.g. 7000" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">P&amp;L % <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
-        <input class="form-input" id="pt-pct" type="number" step="any" placeholder="e.g. 320" />
       </div>
       <div class="form-group">
         <label class="form-label">Currency</label>
@@ -2004,7 +1982,101 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         </select>
       </div>
     </div>
-    <div id="pt-derived-hint" style="font-size:11px;color:var(--text3);margin:-4px 0 12px;min-height:16px"></div>
+
+    <div class="form-label" style="margin-bottom:7px">How do you want to enter it?</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button type="button" class="pt-mode-btn active" id="pt-mode-simple" onclick="setPastTradeMode('simple')"
+        title="You remember the result - type the P&amp;L, or one entry and one exit price">Just the result</button>
+      <button type="button" class="pt-mode-btn" id="pt-mode-log" onclick="setPastTradeMode('log')"
+        title="You bought and sold in pieces on different days - list them and the P&amp;L is worked out">Buys &amp; sells, by date</button>
+      <button type="button" class="pt-mode-btn" id="pt-mode-cash" onclick="setPastTradeMode('cash')"
+        title="You only know the money: what went in, what came back out, and when">Money in &amp; out</button>
+    </div>
+
+    <!-- MODE: simple ------------------------------------------------------- -->
+    <div id="pt-simple">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Opened <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+          <input class="form-input" id="pt-opened" type="date" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Closed *</label>
+          <input class="form-input" id="pt-closed" type="date" />
+        </div>
+      </div>
+
+      <div style="font-size:11px;color:var(--text3);margin:2px 0 10px;line-height:1.5">
+        Units and prices are optional &mdash; fill them in and the P&amp;L below is worked out for you.
+        Skip them if you only remember the result, and just type the P&amp;L.
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Units</label>
+          <input class="form-input" id="pt-units" type="number" step="any" min="0" oninput="updatePastTradeDerived()" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Entry Price</label>
+          <input class="form-input" id="pt-entry" type="number" step="any" min="0" oninput="updatePastTradeDerived()" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Exit Price</label>
+          <input class="form-input" id="pt-exit" type="number" step="any" min="0" oninput="updatePastTradeDerived()" />
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">P&amp;L (USD) *</label>
+          <input class="form-input" id="pt-pnl" type="number" step="any" placeholder="e.g. 7000" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">P&amp;L % <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+          <input class="form-input" id="pt-pct" type="number" step="any" placeholder="e.g. 320" />
+        </div>
+      </div>
+      <div id="pt-derived-hint" style="font-size:11px;color:var(--text3);margin:-4px 0 12px;min-height:16px"></div>
+    </div>
+
+    <!-- MODE: buys & sells by date ------------------------------------------ -->
+    <div id="pt-log" style="display:none">
+      <div style="font-size:11px;color:var(--text3);margin:0 0 10px;line-height:1.5">
+        One row per fill, in any order. <strong style="color:var(--text2)">Buy</strong> = getting in
+        (for a short, opening it); <strong style="color:var(--text2)">Sell</strong> = getting out.
+        Opened and Closed dates come from the first buy and the last sell, and the P&amp;L is worked
+        out for you underneath.
+      </div>
+      <div class="pt-entry-grid pt-entry-head">
+        <div>Date</div><div>Side</div><div>Units</div><div>Price</div><div></div>
+      </div>
+      <div id="pt-entry-rows"></div>
+      <div style="display:flex;gap:8px;margin:2px 0 14px">
+        <button type="button" class="airdrop-action-btn" onclick="ptEntryAdd('buy')">+ Buy</button>
+        <button type="button" class="airdrop-action-btn" onclick="ptEntryAdd('sell')">+ Sell</button>
+      </div>
+      <div class="pt-derived" id="pt-log-summary"></div>
+    </div>
+
+    <!-- MODE: money in & out ------------------------------------------------ -->
+    <div id="pt-cash" style="display:none">
+      <div style="font-size:11px;color:var(--text3);margin:0 0 10px;line-height:1.5">
+        For a punt where you never counted units &mdash; just the money.
+        <strong style="color:var(--text2)">In</strong> = what you put in,
+        <strong style="color:var(--text2)">Out</strong> = what you took back out.
+        P&amp;L is everything out minus everything in; the dates give the open and close.
+        Entry and exit price stay blank on the row, which is honest &mdash; you never had one.
+      </div>
+      <div class="pt-flow-grid pt-entry-head">
+        <div>Date</div><div>Direction</div><div>Amount</div><div></div>
+      </div>
+      <div id="pt-flow-rows"></div>
+      <div style="display:flex;gap:8px;margin:2px 0 14px">
+        <button type="button" class="airdrop-action-btn" onclick="ptFlowAdd('in')">+ Money in</button>
+        <button type="button" class="airdrop-action-btn" onclick="ptFlowAdd('out')">+ Money out</button>
+      </div>
+      <div class="pt-derived" id="pt-cash-summary"></div>
+    </div>
 
     <div class="form-group">
       <label class="form-label">Outcome <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
@@ -4252,6 +4324,8 @@ function updatePastTradeDerived() {
     }
   }
   if (hint) hint.textContent = bits.length ? 'Auto-filled: ' + bits.join(', ') + ' — override either by typing.' : '';
+  renderPtLogSummary();    // the builders' numbers move with direction and currency too
+  renderPtCashSummary();
 }
 
 function onPastTradeSectorPick() {
@@ -4272,6 +4346,206 @@ function onPastTradeNameInput() {
   t.placeholder = derivePastTradeTicker(document.getElementById('pt-name').value);
 }
 
+// Two ways in, because the two real cases are different: you either remember only the result
+// ('simple'), or you scaled in and out across several days and want the maths done ('log').
+let _ptMode = 'simple';
+let _ptEntries = [];   // [{ date, side: 'buy'|'sell', units, price }] — raw strings from the inputs
+let _ptFlows   = [];   // [{ date, side: 'in'|'out', amount }] — the units-free variant
+
+const PT_MODES = ['simple', 'log', 'cash'];
+
+function setPastTradeMode(mode) {
+  _ptMode = PT_MODES.includes(mode) ? mode : 'simple';
+  PT_MODES.forEach(m => {
+    const pane = document.getElementById(m === 'simple' ? 'pt-simple' : 'pt-' + m);
+    if (pane) pane.style.display = _ptMode === m ? '' : 'none';
+    const btn = document.getElementById('pt-mode-' + m);
+    if (btn) btn.classList.toggle('active', _ptMode === m);
+  });
+  // Opening a builder with nothing in it is a dead end — seed the shape of a round trip.
+  if (_ptMode === 'log'  && !_ptEntries.length) { ptEntryAdd('buy', true); ptEntryAdd('sell', true); }
+  if (_ptMode === 'cash' && !_ptFlows.length)   { ptFlowAdd('in', true);   ptFlowAdd('out', true); }
+  renderPtEntries();
+  renderPtFlows();
+}
+
+function ptEntryAdd(side, quiet) {
+  _ptEntries.push({ date: '', side: side === 'sell' ? 'sell' : 'buy', units: '', price: '' });
+  if (!quiet) renderPtEntries();
+}
+
+function ptEntryRemove(i) {
+  _ptEntries.splice(i, 1);
+  renderPtEntries();
+}
+
+// Typed values are written straight into _ptEntries, and only the summary re-renders — the
+// rows themselves are rebuilt on add/remove only, or every keystroke would drop the caret
+// (the same trap renderAirdropTable guards against).
+function ptEntryEdit(i, field, value) {
+  if (!_ptEntries[i]) return;
+  _ptEntries[i][field] = value;
+  updatePastTradeDerived();
+}
+
+function renderPtEntries() {
+  const wrap = document.getElementById('pt-entry-rows');
+  if (!wrap) return;
+  wrap.innerHTML = _ptEntries.map((e, i) => `
+    <div class="pt-entry-grid pt-entry-row">
+      <input class="form-input" type="date" value="${escHtml(e.date)}" onchange="ptEntryEdit(${i},'date',this.value)" />
+      <select class="form-input" onchange="ptEntryEdit(${i},'side',this.value)">
+        <option value="buy"${e.side === 'buy' ? ' selected' : ''}>Buy</option>
+        <option value="sell"${e.side === 'sell' ? ' selected' : ''}>Sell</option>
+      </select>
+      <input class="form-input" type="number" step="any" min="0" placeholder="units" value="${escHtml(e.units)}" oninput="ptEntryEdit(${i},'units',this.value)" />
+      <input class="form-input" type="number" step="any" min="0" placeholder="price" value="${escHtml(e.price)}" oninput="ptEntryEdit(${i},'price',this.value)" />
+      <button type="button" class="pt-entry-del" title="Remove this row" onclick="ptEntryRemove(${i})">&#10005;</button>
+    </div>`).join('');
+  updatePastTradeDerived();
+}
+
+function ptFlowAdd(side, quiet) {
+  _ptFlows.push({ date: '', side: side === 'out' ? 'out' : 'in', amount: '' });
+  if (!quiet) renderPtFlows();
+}
+
+function ptFlowRemove(i) {
+  _ptFlows.splice(i, 1);
+  renderPtFlows();
+}
+
+function ptFlowEdit(i, field, value) {
+  if (!_ptFlows[i]) return;
+  _ptFlows[i][field] = value;
+  updatePastTradeDerived();
+}
+
+function renderPtFlows() {
+  const wrap = document.getElementById('pt-flow-rows');
+  if (!wrap) return;
+  wrap.innerHTML = _ptFlows.map((e, i) => `
+    <div class="pt-flow-grid pt-entry-row">
+      <input class="form-input" type="date" value="${escHtml(e.date)}" onchange="ptFlowEdit(${i},'date',this.value)" />
+      <select class="form-input" onchange="ptFlowEdit(${i},'side',this.value)">
+        <option value="in"${e.side === 'in' ? ' selected' : ''}>In &mdash; put in</option>
+        <option value="out"${e.side === 'out' ? ' selected' : ''}>Out &mdash; took out</option>
+      </select>
+      <input class="form-input" type="number" step="any" min="0" placeholder="amount" value="${escHtml(e.amount)}" oninput="ptFlowEdit(${i},'amount',this.value)" />
+      <button type="button" class="pt-entry-del" title="Remove this row" onclick="ptFlowRemove(${i})">&#10005;</button>
+    </div>`).join('');
+  updatePastTradeDerived();
+}
+
+// Money-in/money-out: no units, no prices, so P&L is simply everything out minus everything
+// in, and the % is return on what was put in. Direction is irrelevant here — a short that
+// made money still shows more coming out than went in.
+function ptCashDerived() {
+  const rows = _ptFlows
+    .map(e => ({ date: (e.date || '').trim(), side: e.side === 'out' ? 'out' : 'in', amount: parseFloat(e.amount) }))
+    .filter(e => ISO_DATE_RE.test(e.date) && isFinite(e.amount) && e.amount > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const ins  = rows.filter(e => e.side === 'in');
+  const outs = rows.filter(e => e.side === 'out');
+  if (!ins.length)  return { problem: 'Add at least one "in" — date and amount.' };
+  if (!outs.length) return { problem: 'Add at least one "out" — that is what closes the trade.' };
+
+  const cur   = document.getElementById('pt-currency').value || 'USD';
+  const rate  = fxRates[cur.toUpperCase()] ?? 1;
+  const inAmt  = ins.reduce((s, e) => s + e.amount, 0);
+  const outAmt = outs.reduce((s, e) => s + e.amount, 0);
+
+  return {
+    rows, ins, outs, inAmt, outAmt, currency: cur,
+    pnlUSD: (outAmt - inAmt) * rate,
+    pnlPct: (outAmt - inAmt) / inAmt * 100,
+    openedDate: ins[0].date,
+    closedDate: outs[outs.length - 1].date,
+    // Kept so the detail is not lost, even though nothing renders it yet. Amounts are USD.
+    cashFlows: rows.map(e => ({ date: e.date, side: e.side, amountUSD: e.amount * rate })),
+  };
+}
+
+function renderPtCashSummary() {
+  const box = document.getElementById('pt-cash-summary');
+  if (!box) return;
+  const d = ptCashDerived();
+  if (d.problem) { box.innerHTML = `<span style="color:var(--text3)">${escHtml(d.problem)}</span>`; return; }
+  const sign = d.pnlUSD >= 0 ? '+' : '';
+  const col  = d.pnlUSD >= 0 ? 'var(--green)' : 'var(--red)';
+  box.innerHTML =
+    `Put in <b>${fmtNative(d.inAmt, d.currency)}</b> over ${d.ins.length} deposit${d.ins.length !== 1 ? 's' : ''}` +
+    ` &middot; took out <b>${fmtNative(d.outAmt, d.currency)}</b> over ${d.outs.length}<br>` +
+    `Opened <b>${d.openedDate}</b> &middot; closed <b>${d.closedDate}</b>` +
+    `<div style="margin-top:6px"><span class="pt-big" style="color:${col};font-family:var(--mono);font-weight:700">` +
+    `${sign}${fmtUsd(d.pnlUSD)}</span> <b style="color:${col}">${sign}${d.pnlPct.toFixed(1)}%</b></div>`;
+}
+
+// Everything the log mode produces, in one place: the closed trade it would create, or a
+// `problem` string saying what is still missing. Pure — no DOM writes — so it can be tested
+// and reused by both the live summary and the submit path.
+function ptLogDerived() {
+  const rows = _ptEntries
+    .map(e => ({ date: (e.date || '').trim(), side: e.side === 'sell' ? 'sell' : 'buy',
+                 units: parseFloat(e.units), price: parseFloat(e.price) }))
+    .filter(e => ISO_DATE_RE.test(e.date) && isFinite(e.units) && e.units > 0 && isFinite(e.price) && e.price > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const buys  = rows.filter(e => e.side === 'buy');
+  const sells = rows.filter(e => e.side === 'sell');
+  if (!buys.length)  return { problem: 'Add at least one buy — date, units and price.' };
+  if (!sells.length) return { problem: 'Add at least one sell — that is what closes the trade.' };
+
+  const wavg = arr => arr.reduce((s, e) => s + e.units * e.price, 0) / arr.reduce((s, e) => s + e.units, 0);
+  const avgEntry   = wavg(buys);
+  const avgExit    = wavg(sells);
+  const boughtUnits = buys.reduce((s, e) => s + e.units, 0);
+  const soldUnits   = sells.reduce((s, e) => s + e.units, 0);
+  const dir  = document.getElementById('pt-direction').value === 'short' ? -1 : 1;
+  const cur  = document.getElementById('pt-currency').value || 'USD';
+  const rate = fxRates[cur.toUpperCase()] ?? 1;
+
+  // P&L is on the units actually sold, priced off the average cost of everything bought —
+  // so an unsold tail leaves the realised number alone instead of inflating it.
+  const pnlUSD = dir * soldUnits * (avgExit - avgEntry) * rate;
+  const pnlPct = dir * (avgExit - avgEntry) / avgEntry * 100;
+
+  return {
+    rows, buys, sells, avgEntry, avgExit, boughtUnits, soldUnits,
+    leftover: boughtUnits - soldUnits,
+    pnlUSD, pnlPct, currency: cur,
+    openedDate: buys[0].date,
+    closedDate: sells[sells.length - 1].date,
+    closePrice: sells[sells.length - 1].price,
+    // Per-sell P&L against average cost, so the stored log reads like any other trade log.
+    tradeLog: rows.map(e => ({ date: e.date, side: e.side, units: e.units, price: e.price,
+                               pnlUSD: e.side === 'sell' ? dir * e.units * (e.price - avgEntry) * rate : 0 })),
+  };
+}
+
+function renderPtLogSummary() {
+  const box = document.getElementById('pt-log-summary');
+  if (!box) return;
+  const d = ptLogDerived();
+  if (d.problem) { box.innerHTML = `<span style="color:var(--text3)">${escHtml(d.problem)}</span>`; return; }
+  const cur = d.currency;
+  const sign = d.pnlUSD >= 0 ? '+' : '';
+  const col  = d.pnlUSD >= 0 ? 'var(--green)' : 'var(--red)';
+  box.innerHTML =
+    `Bought <b>${fmtUnits(d.boughtUnits)}</b> at avg <b>${fmtNative(d.avgEntry, cur)}</b>` +
+    ` &middot; sold <b>${fmtUnits(d.soldUnits)}</b> at avg <b>${fmtNative(d.avgExit, cur)}</b><br>` +
+    `Opened <b>${d.openedDate}</b> &middot; closed <b>${d.closedDate}</b>` +
+    (d.leftover > 1e-9
+      ? `<br><span style="color:var(--amber)">${fmtUnits(d.leftover)} never sold — the P&amp;L below only covers the units you sold.</span>`
+      : '') +
+    (d.leftover < -1e-9
+      ? `<br><span style="color:var(--amber)">You sold more than you bought — check the units.</span>`
+      : '') +
+    `<div style="margin-top:6px"><span class="pt-big" style="color:${col};font-family:var(--mono);font-weight:700">` +
+    `${sign}${fmtUsd(d.pnlUSD)}</span> <b style="color:${col}">${sign}${d.pnlPct.toFixed(1)}%</b></div>`;
+}
+
 function showPastTradeModal() {
   ['pt-name','pt-ticker','pt-sector','pt-units','pt-entry','pt-exit','pt-pnl','pt-pct','pt-outcome','pt-opened']
     .forEach(id => { document.getElementById(id).value = ''; });
@@ -4284,6 +4558,9 @@ function showPastTradeModal() {
   document.getElementById('pt-ticker').placeholder = 'auto from name';
   document.getElementById('pt-derived-hint').textContent = '';
   document.getElementById('pt-error').textContent = '';
+  _ptEntries = [];
+  _ptFlows = [];
+  setPastTradeMode('simple');
   document.getElementById('pastTradeModal').classList.add('open');
   document.getElementById('pt-name').focus();
 }
@@ -4299,22 +4576,40 @@ function submitPastTradeEntry() {
   const val  = id => document.getElementById(id).value.trim();
   const num  = id => { const n = parseFloat(document.getElementById(id).value); return isFinite(n) ? n : null; };
   const name = val('pt-name');
-  const closedDate = val('pt-closed');
-  const openedDate = val('pt-opened');
-  const pnl  = num('pt-pnl');
+  err.textContent = '';
+  if (!name) { err.textContent = 'Give the trade a name.'; return; }
 
-  if (!name)                        { err.textContent = 'Give the trade a name.'; return; }
-  if (pnl === null)                 { err.textContent = 'Enter the P&L in USD (negative for a loss).'; return; }
-  if (!ISO_DATE_RE.test(closedDate)){ err.textContent = 'Enter the date you closed the trade.'; return; }
-  if (openedDate && !ISO_DATE_RE.test(openedDate)) { err.textContent = 'Opened date is not a valid date.'; return; }
-  if (openedDate && openedDate > closedDate)       { err.textContent = 'Opened date is after the close date.'; return; }
+  let units, entry, exit, pnl, pct, openedDate, closedDate, tradeLog = [], cashFlows = null;
+
+  if (_ptMode === 'cash') {
+    const d = ptCashDerived();
+    if (d.problem) { err.textContent = d.problem; return; }
+    units = null; entry = null; exit = null;   // there genuinely was no unit count or price
+    pnl = d.pnlUSD; pct = d.pnlPct;
+    openedDate = d.openedDate; closedDate = d.closedDate; cashFlows = d.cashFlows;
+  } else if (_ptMode === 'log') {
+    const d = ptLogDerived();
+    if (d.problem) { err.textContent = d.problem; return; }
+    units = d.soldUnits; entry = d.avgEntry; exit = d.closePrice;
+    pnl = d.pnlUSD; pct = d.pnlPct;
+    openedDate = d.openedDate; closedDate = d.closedDate; tradeLog = d.tradeLog;
+  } else {
+    closedDate = val('pt-closed');
+    openedDate = val('pt-opened');
+    pnl = num('pt-pnl');
+    if (pnl === null)                  { err.textContent = 'Enter the P&L in USD (negative for a loss).'; return; }
+    if (!ISO_DATE_RE.test(closedDate)) { err.textContent = 'Enter the date you closed the trade.'; return; }
+    if (openedDate && !ISO_DATE_RE.test(openedDate)) { err.textContent = 'Opened date is not a valid date.'; return; }
+    if (openedDate && openedDate > closedDate)       { err.textContent = 'Opened date is after the close date.'; return; }
+    units = num('pt-units'); entry = num('pt-entry'); exit = num('pt-exit');
+    pct = num('pt-pct');
+    if (pct === null && entry > 0 && exit > 0) pct = pastTradeDirSign() * (exit - entry) / entry * 100;
+    openedDate = openedDate || null;
+  }
 
   const ticker = (val('pt-ticker') || derivePastTradeTicker(name)).toUpperCase();
   const pos    = portfolio.find(p => p.ticker === ticker) || closedTrades.find(t => t.ticker === ticker);
   const { color, bg } = pos ? { color: pos.color, bg: pos.bg } : nextColorFor(ticker);
-  const entry  = num('pt-entry'), exit = num('pt-exit');
-  let pct = num('pt-pct');
-  if (pct === null && entry > 0 && exit > 0) pct = pastTradeDirSign() * (exit - entry) / entry * 100;
 
   pushUndo(`log past trade ${ticker}`);
   const idx = insertClosedTrade({
@@ -4323,18 +4618,19 @@ function submitPastTradeEntry() {
     ticker,
     sector:      val('pt-sector') || 'Other',
     color, bg,
-    units:       num('pt-units'),
+    units,
     entryPrice:  entry,
     closePrice:  exit,
     currency:    document.getElementById('pt-currency').value || 'USD',
     direction:   document.getElementById('pt-direction').value || null,
     totalPnlUsd: pnl,
     pnlPct:      pct,
-    openedDate:  openedDate || null,
+    openedDate,
     closedDate,
     outcome:     val('pt-outcome') || null,
     thesis:      null,
-    tradeLog:    [],
+    tradeLog,
+    cashFlows,           // only set by the money-in/out mode; null otherwise
     manual:      true,   // backfilled by hand, not closed through submitClosePosition
   });
 
