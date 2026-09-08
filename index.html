@@ -1008,6 +1008,15 @@ textarea.form-input { min-height: 80px; resize: vertical; }
 }
 tr:hover .trash-btn { opacity: 1; }
 .trash-btn:hover { color: var(--red); background: var(--redd); }
+.pencil-btn {
+  background: none; border: none; color: var(--text3);
+  cursor: pointer; padding: 6px; border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+}
+tr:hover .pencil-btn { opacity: 1; }
+.pencil-btn:hover { color: var(--cyan); background: var(--cyand); }
 .add-asset-btn {
   background: var(--cyand); border: 1px solid var(--cyan); color: var(--cyan);
   padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
@@ -4135,9 +4144,14 @@ function renderTable(data) {
       <td style="text-align:right;width:100px;white-space:nowrap">
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
           ${p.physical ? '' : `<button class="close-btn" onclick="showCloseModal(${p.posId})">✓ Close</button>`}
-          <button class="trash-btn" onclick="removeAsset(${p.posId})" title="Remove ${p.ticker} from the portfolio">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-          </button>
+          <div style="display:flex;align-items:center;gap:2px">
+            <button class="pencil-btn" onclick="showEditModal(${p.posId})" title="Edit ${escHtml(p.ticker)} — name, ticker, sector, prices, thesis">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="trash-btn" onclick="removeAsset(${p.posId})" title="Remove ${escHtml(p.ticker)} from the portfolio">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </div>
         </div>
       </td>
     </tr>`;
@@ -5357,6 +5371,7 @@ function recalcPerpUnits() {
 }
 
 function showAddModal(mode) {
+  _editPosId = null;
   _addMode = mode === 'perp' ? 'perp' : mode === 'physical' ? 'physical' : 'spot';
   const perp     = _addMode === 'perp';
   const physical = _addMode === 'physical';
@@ -5421,6 +5436,7 @@ function hideAddModal() {
   document.getElementById('lev-preview').textContent = '';
   _addMode = 'spot';
   _addDirection = 'long';
+  _editPosId = null;
 }
 
 // Build a short, unique ticker/code from a physical asset's name (used for the row dot + chart grouping).
@@ -5468,7 +5484,138 @@ function submitPhysicalAsset() {
   renderAll();
 }
 
+// ── EDIT AN EXISTING POSITION ────────────────────────────────
+// Reuses the add-asset modal rather than duplicating it: same fields, same validation, but the
+// submit writes back into the position instead of pushing a new one. posId is the handle (not
+// ticker) so two rows in the same coin stay distinct. Funding-from-cash is an add-time one-off
+// — an edit never moves cash, or every sector fix would charge the balance a second time.
+let _editPosId = null;
+
+// Point the sector dropdown at a value, falling back to the free-text box for anything the
+// taxonomy does not list — hand-typed sectors from older versions have to survive a re-save.
+function setSectorField(sector) {
+  const sel = document.getElementById('f-sector-select');
+  const inp = document.getElementById('f-sector');
+  const val  = (sector || '').trim();
+  const opts = sel.options ? Array.from(sel.options) : [];
+  if (!val)                                        { sel.value = '';         inp.style.display = 'none'; inp.value = ''; }
+  else if (opts.some(o => o.value === val))        { sel.value = val;        inp.style.display = 'none'; inp.value = val; }
+  else                                             { sel.value = '__custom'; inp.style.display = '';     inp.value = val; }
+}
+
+function showEditModal(posId) {
+  const p = portfolio.find(x => x.posId === posId);
+  if (!p) return;
+  showAddModal(p.physical ? 'physical' : p.leveraged ? 'perp' : 'spot');
+  _editPosId = posId;
+  document.getElementById('addModalTitle').textContent     = p.physical ? 'Edit Physical Asset' : p.leveraged ? 'Edit Leverage Position' : 'Edit Position';
+  document.getElementById('addModalSubmitBtn').textContent = 'Save Changes';
+  document.getElementById('fund-from-cash-row').style.display = 'none';
+  const set = (id, v) => { document.getElementById(id).value = (v == null ? '' : v); };
+  set('f-name', p.name);
+  set('f-currency', p.currency || 'USD');
+  setSectorField(p.sector);
+  if (p.physical) {
+    // Without a cost basis the entry price only mirrors the value — show it blank, the way it
+    // was entered, so re-saving does not silently declare the current value as a purchase price.
+    set('f-entry',   p.hasCostBasis ? p.entryPrice : '');
+    set('f-current', p.currentPrice);
+  } else {
+    set('f-ticker', p.ticker);
+    set('f-units', p.units);
+    set('f-entry', p.entryPrice);
+    set('f-current', p.currentPrice);
+    set('f-target', p.targetPrice);
+    set('f-invalidation', p.invalidationPrice);
+    set('f-coingecko', p.coingeckoId);
+    set('f-yahoo', p.yahooTicker);
+    set('f-thesis', p.thesis || '');
+    document.getElementById('f-show-thesis').checked = !!p.showThesis;
+  }
+  if (p.leveraged) {
+    setAddDirection(p.direction === 'short' ? 'short' : 'long');
+    set('f-margin', p.marginUSD);
+    const notional = p.units * p.entryPrice * (fxRates[(p.currency || 'USD').toUpperCase()] ?? 1);
+    const lev = (p.marginUSD > 0) ? notional / p.marginUSD : 1;
+    document.getElementById('f-leverage').value     = Math.min(Math.max(lev, 1), 25);
+    document.getElementById('f-leverage-num').value = Number(lev.toFixed(2));
+    recalcPerpUnits();
+    set('f-units', p.units);   // last word: the stored size beats the margin x leverage round-trip
+  }
+  setTimeout(() => document.getElementById('f-name').focus(), 60);
+}
+
+function submitEditAsset() {
+  const err = document.getElementById('f-error');
+  const p   = portfolio.find(x => x.posId === _editPosId);
+  if (!p) { err.textContent = 'That position no longer exists.'; return; }
+  const val = id => document.getElementById(id).value;
+  const num = id => parseFloat(document.getElementById(id).value);
+  const name     = val('f-name').trim();
+  const currency = val('f-currency') || 'USD';
+  const sector   = val('f-sector').trim();
+  if (!name) { err.textContent = 'Name is required.'; return; }
+
+  if (p.physical) {
+    const value = num('f-current');
+    if (isNaN(value) || value <= 0) { err.textContent = 'Enter a valid current value.'; return; }
+    const purchRaw     = num('f-entry');
+    const hasCostBasis = !isNaN(purchRaw) && purchRaw > 0;
+    pushUndo(`edit ${p.name}`);
+    p.name         = name;
+    p.sector       = sector || 'Physical';
+    p.currency     = currency;
+    p.currentPrice = value;
+    p.hasCostBasis = hasCostBasis;
+    p.entryPrice   = hasCostBasis ? purchRaw : value;
+  } else {
+    const ticker  = val('f-ticker').trim().toUpperCase();
+    const units   = num('f-units');
+    const entry   = num('f-entry');
+    const current = num('f-current');
+    const margin  = p.leveraged ? num('f-margin') : null;
+    if (!ticker)                        { err.textContent = 'Name and ticker are required.'; return; }
+    if (isNaN(units)   || units   <= 0) { err.textContent = 'Enter a valid units / amount.'; return; }
+    if (isNaN(entry)   || entry   <= 0) { err.textContent = 'Enter a valid entry price.'; return; }
+    if (isNaN(current) || current <= 0) { err.textContent = 'Enter a valid current price.'; return; }
+    if (p.leveraged && (isNaN(margin) || margin <= 0)) { err.textContent = 'Enter a valid margin amount.'; return; }
+    const targetRaw = num('f-target');
+    const invRaw    = num('f-invalidation');
+    const oldTicker = p.ticker;
+    pushUndo(`edit ${oldTicker}`);
+    p.name              = name;
+    p.ticker            = ticker;
+    p.sector            = sector;
+    p.units             = units;
+    p.entryPrice        = entry;
+    p.currentPrice      = current;
+    p.currency          = currency;
+    p.targetPrice       = (!isNaN(targetRaw) && targetRaw > 0) ? targetRaw : null;
+    p.invalidationPrice = (!isNaN(invRaw)    && invRaw    > 0) ? invRaw    : null;
+    p.coingeckoId       = val('f-coingecko').trim().toLowerCase() || (KNOWN_PRICE_SOURCES[ticker]?.coingeckoId) || null;
+    p.yahooTicker       = val('f-yahoo').trim().toUpperCase()     || (KNOWN_PRICE_SOURCES[ticker]?.yahooTicker) || null;
+    p.thesis            = val('f-thesis').trim();
+    p.showThesis        = document.getElementById('f-show-thesis').checked;
+    if (p.leveraged) { p.marginUSD = margin; p.direction = _addDirection; }
+    // Thesis-board charts are filed under the ticker. Carry them across a rename, unless another
+    // row still answers to the old one.
+    if (ticker !== oldTicker && chartImages[oldTicker] && !portfolio.some(x => x.ticker === oldTicker)) {
+      chartImages[ticker] = chartImages[oldTicker];
+      delete chartImages[oldTicker];
+    }
+    // A blank sector means the dropdown was put back to "Auto" - re-tag it from the ticker.
+    if (!p.sector) {
+      if (!applyCryptoSectors()) fetchCryptoSectors(false);
+      if (!p.sector) p.sector = 'Other';
+    }
+  }
+  saveState();
+  hideAddModal();
+  renderAll();
+}
+
 function submitAddAsset() {
+  if (_editPosId != null)      { submitEditAsset(); return; }
   if (_addMode === 'physical') { submitPhysicalAsset(); return; }
   const name     = document.getElementById('f-name').value.trim();
   const ticker   = document.getElementById('f-ticker').value.trim().toUpperCase();
