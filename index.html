@@ -5120,9 +5120,9 @@ function renderRealizedLog(p) {
   }
   const cellStyle = 'padding:5px 8px;border-bottom:1px solid var(--border);font-family:var(--mono)';
   // Kept out of tradeLogAverages on purpose: "avg buyback" means buybacks, not the first buy.
-  const openingRow = opening ? `<tr title="Worked out: what you hold now with every logged trade below undone. Changes made straight in the table's units or entry cells land here too.">
+  const openingRow = opening ? `<tr title="Your first buy of this position. Changes made straight in the table's units or entry cells land here too.">
         <td style="${cellStyle};color:var(--text2)">${escHtml(opening.date || '—')}</td>
-        <td style="${cellStyle};color:var(--text2)">Opening <span style="color:var(--text3);font-size:10px">worked out</span></td>
+        <td style="${cellStyle};color:var(--text2)">Opening</td>
         <td style="${cellStyle};text-align:right">${privacyMode ? '•••' : fmtUnits(opening.units)}</td>
         <td style="${cellStyle};text-align:right">${opening.price != null ? fmtNative(opening.price, p.currency) : '—'}</td>
         <td style="${cellStyle};text-align:right;color:var(--text3)">—</td>
