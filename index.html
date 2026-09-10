@@ -4169,7 +4169,7 @@ function renderTable(data) {
       <td class="right">
         <div class="pnl-cell">
           <span class="pnl-usd ${p.totalPnlUsd >= 0 ? 'pos' : 'neg'}">${fmtUsd(p.totalPnlUsd)}</span>
-          ${(p.realizedPnl || (p.tradeLog && p.tradeLog.length)) ? `<span class="realized-sub" onclick="editRealized(${p.posId})" title="Click for trade log & realized P&L">${p.realizedPnl ? `incl. ${fmtUsd(p.realizedPnl)} realized` : 'trade log'}</span>` : ''}
+          ${(!p.physical || p.realizedPnl) ? `<span class="realized-sub" onclick="editRealized(${p.posId})" title="Click for trade log & realized P&L">${p.realizedPnl ? `incl. ${fmtUsd(p.realizedPnl)} realized` : 'trade log'}</span>` : ''}
           ${breakEvenSub(p)}
         </div>
       </td>
@@ -5050,6 +5050,31 @@ function editRealized(posId) {
 // ── TRADE LOG (per-position journal of partial sells & buybacks) ─────────────
 let _logViewPosId = null;
 
+// The opening lot of an open position — worked out, never stored. Start from what is held now
+// and undo every logged trade, newest first: a sell gives its units back, a buy is taken back
+// out of the average-cost entry. What remains is what was held before the log began, i.e. the
+// original buy. Nothing is saved, so every existing position gets one with no migration.
+// Anything changed straight in the table's units/entry cells lands in this lot too.
+// null when the log already explains every unit, or does not fit the position.
+function openingLot(p) {
+  if (p.physical || !(p.units >= 0)) return null;
+  const log = [...(p.tradeLog || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  let units = p.units, price = p.entryPrice;
+  for (let i = log.length - 1; i >= 0; i--) {
+    const t = log[i];
+    if (t.side === 'sell') { units += t.units; continue; }
+    const before = units - t.units;
+    if (before < -1e-9) return null; // a logged buy bigger than the holding: the log does not fit
+    if (before > 1e-9) price = (units * price - t.units * t.price) / before;
+    units = before;
+  }
+  if (units <= 1e-9) return null;
+  // openedDate is when the row was added; ignore it if backfilled trades go further back
+  const first = log.length ? log[0].date : null;
+  const date = p.openedDate && (!first || p.openedDate <= first) ? p.openedDate : null;
+  return { date, units, price: price > 0 ? price : null };
+}
+
 function tradeLogAverages(log) {
   const avg = arr => {
     const units = arr.reduce((s, e) => s + e.units, 0);
@@ -5086,12 +5111,23 @@ function renderRealizedLog(p) {
   const avgsEl = document.getElementById('realizedLogAvgs');
   if (!table || !avgsEl) return;
   const log = [...(p.tradeLog || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  if (!log.length) {
-    table.innerHTML = '<div style="font-size:12px;color:var(--text3)">No trades logged yet. Partial sells and buybacks land here automatically from now on — use “Log past trade” for older ones.</div>';
+  const opening = openingLot(p);
+  const emptyHint = '<div style="font-size:12px;color:var(--text3);margin-top:8px">No trades logged yet. Partial sells and buybacks land here automatically from now on — use “Log past trade” for older ones.</div>';
+  if (!log.length && !opening) {
+    table.innerHTML = emptyHint;
     avgsEl.innerHTML = '';
     return;
   }
   const cellStyle = 'padding:5px 8px;border-bottom:1px solid var(--border);font-family:var(--mono)';
+  // Kept out of tradeLogAverages on purpose: "avg buyback" means buybacks, not the first buy.
+  const openingRow = opening ? `<tr title="Worked out: what you hold now with every logged trade below undone. Changes made straight in the table's units or entry cells land here too.">
+        <td style="${cellStyle};color:var(--text2)">${escHtml(opening.date || '—')}</td>
+        <td style="${cellStyle};color:var(--text2)">Opening <span style="color:var(--text3);font-size:10px">worked out</span></td>
+        <td style="${cellStyle};text-align:right">${privacyMode ? '•••' : fmtUnits(opening.units)}</td>
+        <td style="${cellStyle};text-align:right">${opening.price != null ? fmtNative(opening.price, p.currency) : '—'}</td>
+        <td style="${cellStyle};text-align:right;color:var(--text3)">—</td>
+        <td style="${cellStyle}"></td>
+      </tr>` : '';
   table.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
     <thead><tr>
       <th style="text-align:left;padding:0 8px 6px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">Date</th>
@@ -5101,7 +5137,7 @@ function renderRealizedLog(p) {
       <th style="text-align:right;padding:0 8px 6px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">P&L</th>
       <th></th>
     </tr></thead>
-    <tbody>${log.map(e => {
+    <tbody>${openingRow}${log.map(e => {
       const origIdx = (p.tradeLog || []).indexOf(e);
       return `<tr>
         <td style="${cellStyle};color:var(--text2)">${escHtml(e.date || '—')}</td>
@@ -5112,7 +5148,7 @@ function renderRealizedLog(p) {
         <td style="${cellStyle};text-align:right"><button class="lboard-del" onclick="removeLogEntry(${origIdx})" title="Remove entry">✕</button></td>
       </tr>`;
     }).join('')}</tbody>
-  </table>`;
+  </table>` + (log.length ? '' : emptyHint);
   const { avgExit, soldUnits, avgBuy, boughtUnits } = tradeLogAverages(log);
   avgsEl.innerHTML =
     (avgExit != null ? `Avg exit <b style="color:var(--text)">${fmtNative(avgExit, p.currency)}</b> across ${privacyMode ? '•••' : fmtUnits(soldUnits)} sold` : '') +
