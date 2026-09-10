@@ -3693,13 +3693,19 @@ async function fetchPrices() {
   }
 }
 
+// fxRates stores USD per 1 unit of the currency (DKK → 0.1556), and every conversion uses it
+// that way. The owner thinks in "how many kroner is a dollar", so the FX bar and this prompt
+// show and take the inverse ($1 = 6.4267 DKK) — display only, the stored value is unchanged.
+const fmtPerUsd = usdPerUnit => { const v = 1 / usdPerUnit; return v >= 100 ? v.toFixed(2) : v.toFixed(4); };
+
 function editFxRate(currency) {
   const current = fxRates[currency] ?? FALLBACK_RATES[currency];
-  const raw = prompt(`1 ${currency} = ? USD\n\nCurrent rate: ${current.toFixed(6)}`, current.toFixed(6));
+  const shown = fmtPerUsd(current);
+  const raw = prompt(`$1 = ? ${currency}\n\nCurrent rate: ${shown}`, shown);
   if (raw === null) return;
-  const val = parseFloat(raw);
+  const val = parseUserNumber(raw); // "6,54" on a Danish keyboard, not parseFloat's 6
   if (isNaN(val) || val <= 0) return;
-  fxRates[currency] = val;
+  fxRates[currency] = 1 / val;
   fxSource = 'manual';
   saveState();
   renderAll();
@@ -3870,9 +3876,9 @@ function renderFxBar() {
     <div class="fx-divider"></div>
     ${foreignCurrencies.map(c => `
       <div class="fx-item">
-        <span class="fx-currency">1 ${c}</span>
+        <span class="fx-currency">$1</span>
         <span style="color:var(--text3);font-size:11px">=</span>
-        <span class="fx-rate">$${(fxRates[c] ?? FALLBACK_RATES[c] ?? 1).toFixed(4)}</span>
+        <span class="fx-rate">${fmtPerUsd(fxRates[c] ?? FALLBACK_RATES[c] ?? 1)} ${c}</span>
         <button class="fx-edit-btn" onclick="editFxRate('${c}')">edit</button>
       </div>
     `).join('<div class="fx-divider"></div>')}
@@ -4109,16 +4115,13 @@ function renderTable(data) {
         <span class="sector-badge" style="background:${sc.bg};color:${sc.color}">${escHtml(p.sector)}</span>
       </td>
       <td class="right">
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
-            <input class="price-editable" type="text"
-              value="${editMode ? p.entryPrice : fmtPriceNum(p.entryPrice)}"
-              ${editMode ? '' : 'readonly tabindex="-1"'}
-              onblur="updateEntryPrice(${p.posId}, this.value)"
-              onkeydown="if(event.key==='Enter')this.blur()"
-            />${p.currency && p.currency !== 'USD' ? `<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${p.currency}</span>` : ''}
-          </div>
-          ${breakEvenSub(p)}
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+          <input class="price-editable" type="text"
+            value="${editMode ? p.entryPrice : fmtPriceNum(p.entryPrice)}"
+            ${editMode ? '' : 'readonly tabindex="-1"'}
+            onblur="updateEntryPrice(${p.posId}, this.value)"
+            onkeydown="if(event.key==='Enter')this.blur()"
+          />${p.currency && p.currency !== 'USD' ? `<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${p.currency}</span>` : ''}
         </div>
       </td>
       <td class="right">
@@ -4167,6 +4170,7 @@ function renderTable(data) {
         <div class="pnl-cell">
           <span class="pnl-usd ${p.totalPnlUsd >= 0 ? 'pos' : 'neg'}">${fmtUsd(p.totalPnlUsd)}</span>
           ${(p.realizedPnl || (p.tradeLog && p.tradeLog.length)) ? `<span class="realized-sub" onclick="editRealized(${p.posId})" title="Click for trade log & realized P&L">${p.realizedPnl ? `incl. ${fmtUsd(p.realizedPnl)} realized` : 'trade log'}</span>` : ''}
+          ${breakEvenSub(p)}
         </div>
       </td>
       <td class="right">
