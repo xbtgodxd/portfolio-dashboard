@@ -1038,6 +1038,8 @@ tr:hover .pencil-btn { opacity: 1; }
 .private-del-btn { background: none; border: none; color: transparent; cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px; border-radius: 4px; transition: color 0.15s; }
 .private-table tr:hover .private-del-btn { color: var(--text3); }
 .private-del-btn:hover { color: var(--red) !important; }
+.private-cur-row { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 11px; color: var(--text3); }
+.private-sub { font-size: 10px; font-weight: 400; color: var(--text3); font-family: var(--mono); margin-top: 2px; }
 .private-total-row td { font-weight: 600; color: var(--text); border-top: 1px solid var(--border2); border-bottom: none; background: var(--bg2); }
 
 /* ── FOOTER / ABOUT ── */
@@ -1248,6 +1250,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
         Add Physical Asset
       </button>
+      <button class="add-asset-btn" onclick="showAddModal('skin')" title="Add a Counter-Strike skin, knife, gloves, case or sticker — priced live from the Steam Market">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><line x1="12" y1="1" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="23"/><line x1="1" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="23" y2="12"/></svg>
+        Add CS Skin
+      </button>
     </div>
   </div>
   <div class="table-wrap" id="tableWrap">
@@ -1430,6 +1436,15 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       <button class="private-info-close" onclick="dismissPrivateInfo()" title="Got it — don't show again">✕</button>
     </div>
 
+    <!-- USD / HOME-CURRENCY SWITCH (hidden when the home currency is USD) -->
+    <div class="private-cur-row" id="privateCurRow">
+      Show amounts in
+      <div class="hist-range">
+        <button class="hist-range-btn" id="privCur-usd" onclick="setPrivateShowHome(false)">USD</button>
+        <button class="hist-range-btn" id="privCur-home" onclick="setPrivateShowHome(true)">DKK</button>
+      </div>
+    </div>
+
     <!-- PRIVATE SUMMARY -->
     <div class="summary-grid" id="privateSummaryGrid"></div>
 
@@ -1501,7 +1516,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="modal-title">Add Private Asset</div>
     <div class="form-group">
       <label class="form-label">Name</label>
-      <input class="form-input" id="pa-name" placeholder="e.g. Apartment" />
+      <input class="form-input" id="pa-name" placeholder="e.g. Apartment" oninput="onPrivateCsInput()" />
     </div>
     <div class="form-group">
       <label class="form-label">Category</label>
@@ -1511,26 +1526,53 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <option value="Private Equity">Private Equity</option>
         <option value="Business">Business</option>
         <option value="Stocks / Shares">Stocks / Shares</option>
+        <option value="CS Skins">CS Skins</option>
         <option value="Physical Assets">Physical Assets</option>
         <option value="Pension">Pension</option>
         <option value="Other">Other</option>
       </select>
     </div>
-    <!-- TRACKED INVESTMENT FIELDS (Crypto & Stocks / Shares) -->
+    <!-- TRACKED INVESTMENT FIELDS (Crypto, Stocks / Shares & CS Skins) -->
     <div id="pa-tracked-fields" style="display:none">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <!-- CS SKINS: wear + StatTrak/Souvenir build the Steam market name -->
+      <div id="pa-cs-fields" style="display:none;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
+          <label class="form-label">Exterior</label>
+          <select class="form-input" id="pa-exterior" onchange="onPrivateCsInput()">
+            <option value="Factory New">Factory New</option>
+            <option value="Minimal Wear">Minimal Wear</option>
+            <option value="Field-Tested">Field-Tested</option>
+            <option value="Well-Worn">Well-Worn</option>
+            <option value="Battle-Scarred">Battle-Scarred</option>
+            <option value="">No wear (case, sticker, agent…)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Variant</label>
+          <select class="form-input" id="pa-variant" onchange="onPrivateCsInput()">
+            <option value="">Normal</option>
+            <option value="StatTrak™">StatTrak™</option>
+            <option value="Souvenir">Souvenir</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group" id="pa-ticker-group">
           <label class="form-label">Ticker</label>
           <input class="form-input" id="pa-ticker" placeholder="e.g. BTC" oninput="onPrivateTickerInput()" style="text-transform:uppercase" />
         </div>
+        <div class="form-group" id="pa-float-group" style="display:none">
+          <label class="form-label">Float <span style="color:var(--text3);font-weight:400;text-transform:none">optional — sets exterior</span></label>
+          <input class="form-input" id="pa-float" type="text" inputmode="decimal" placeholder="e.g. 0.2134" oninput="onPrivateFloatInput()" />
+        </div>
         <div class="form-group">
-          <label class="form-label">Units</label>
+          <label class="form-label" id="pa-units-label">Units</label>
           <input class="form-input" id="pa-units" type="number" placeholder="e.g. 0.5" step="any" min="0" />
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
-          <label class="form-label">Avg Buy Price <span style="color:var(--text3);font-weight:400;text-transform:none">optional — for gain/loss</span></label>
+          <label class="form-label"><span id="pa-entry-label">Avg Buy Price</span> <span style="color:var(--text3);font-weight:400;text-transform:none">optional — for gain/loss</span></label>
           <input class="form-input" id="pa-entry" type="number" placeholder="e.g. 720" step="any" min="0" />
         </div>
         <div class="form-group">
@@ -1553,6 +1595,14 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       <div class="form-group" id="pa-yahoo-group" style="display:none">
         <label class="form-label">Yahoo Ticker <span style="color:var(--text3);font-weight:400;text-transform:none">for stocks — find it on finance.yahoo.com</span></label>
         <input class="form-input" id="pa-yahoo" placeholder="e.g. NOVO-B.CO, NVDA" style="text-transform:uppercase" />
+      </div>
+      <div class="form-group" id="pa-steam-group" style="display:none">
+        <label class="form-label">Steam Market Name <span style="color:var(--text3);font-weight:400;text-transform:none">auto-filled — used to fetch the price</span></label>
+        <input class="form-input" id="pa-steam" placeholder="e.g. StatTrak™ AK-47 | Redline (Field-Tested)" oninput="_csSteamTouched = true" />
+        <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5">
+          Priced at the Steam Market's recent median sale. Cash sites (CSFloat, Skinport) usually pay less.
+          Steam can't list items above ~$2,000 — for those, type the price in Edit mode.
+        </div>
       </div>
     </div>
     <!-- MANUAL VALUE FIELDS -->
@@ -1794,21 +1844,59 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Asset Name</label>
-        <input class="form-input" id="f-name" placeholder="e.g. Bitcoin" />
+        <input class="form-input" id="f-name" placeholder="e.g. Bitcoin" oninput="onMainCsInput()" />
       </div>
       <div class="form-group" id="f-ticker-group">
         <label class="form-label">Ticker</label>
         <input class="form-input" id="f-ticker" placeholder="e.g. BTC" oninput="this.value=this.value.toUpperCase();suggestSector()" />
       </div>
     </div>
+    <!-- CS SKIN FIELDS (skin mode only) — same inputs as the Private tab's CS Skins -->
+    <div id="f-skin-fields" style="display:none">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Exterior</label>
+          <select class="form-input" id="f-exterior" onchange="onMainCsInput()">
+            <option value="Factory New">Factory New</option>
+            <option value="Minimal Wear">Minimal Wear</option>
+            <option value="Field-Tested">Field-Tested</option>
+            <option value="Well-Worn">Well-Worn</option>
+            <option value="Battle-Scarred">Battle-Scarred</option>
+            <option value="">No wear (case, sticker, agent…)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Variant</label>
+          <select class="form-input" id="f-variant" onchange="onMainCsInput()">
+            <option value="">Normal</option>
+            <option value="StatTrak™">StatTrak™</option>
+            <option value="Souvenir">Souvenir</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Float <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional — sets exterior</span></label>
+          <input class="form-input" id="f-float" type="text" inputmode="decimal" placeholder="e.g. 0.2134" oninput="onMainFloatInput()" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Steam Market Name <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">auto-filled</span></label>
+          <input class="form-input" id="f-steam" placeholder="e.g. StatTrak™ AK-47 | Redline (Field-Tested)" oninput="_csMainSteamTouched = true" />
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:-8px;margin-bottom:16px">
+        Priced at the Steam Market's recent median sale. Cash sites (CSFloat, Skinport) usually pay less.
+        Steam can't list items above ~$2,000 — for those, type the price in Edit mode.
+      </div>
+    </div>
     <div class="form-row">
-      <div class="form-group">
+      <div class="form-group" id="f-sector-group">
         <label class="form-label">Sector</label>
         <select class="form-input" id="f-sector-select" onchange="onSectorPick()"></select>
         <input class="form-input" id="f-sector" placeholder="Type a custom sector" style="display:none;margin-top:6px" />
       </div>
       <div class="form-group" id="f-units-group">
-        <label class="form-label">Units / Amount Held</label>
+        <label class="form-label" id="lbl-units">Units / Amount Held</label>
         <input class="form-input" id="f-units" type="number" placeholder="e.g. 10" step="any" min="0" oninput="updateFundPreview()" />
       </div>
     </div>
@@ -2376,6 +2464,7 @@ const SECTOR_COLORS = {
   "Furniture":       { color: "#a0522d", bg: "rgba(160,82,45,0.12)"   },
   "Boat":            { color: "#1abc9c", bg: "rgba(26,188,156,0.12)"  },
   "Precious Metals": { color: "#d4af37", bg: "rgba(212,175,55,0.12)"  },
+  "CS Skins":        { color: "#de9b35", bg: "rgba(222,155,53,0.12)"  }, // every "Add CS Skin" row
 };
 
 // -- CRYPTO SECTORS ----------------------------------------------------------
@@ -2659,7 +2748,7 @@ const SECTOR_RENAMES = {
 // The CoinGecko id a position actually prices off - KNOWN_PRICE_SOURCES wins over the
 // stored one, exactly as in fetchPrices().
 function resolvedCgId(p) {
-  if (!p || p.physical) return null;
+  if (!p || p.physical || p.skin) return null;
   const known = KNOWN_PRICE_SOURCES[(p.ticker || '').toUpperCase()];
   return (known && known.coingeckoId) || p.coingeckoId || null;
 }
@@ -2698,7 +2787,7 @@ const SECTOR_FETCH_GAP_MS = 6500;
 async function fetchCryptoSectors(force) {
   const ids = [];
   portfolio.forEach(p => {
-    if (p.physical) return;
+    if (p.physical || p.skin) return;
     if (!force && !isAutoSector(p.sector)) return;
     if (CURATED_SECTORS[(p.ticker || '').toUpperCase()]) return; // curated wins, no request
     const id = resolvedCgId(p);
@@ -2841,6 +2930,9 @@ let historyLogScale = false; // log axis in vs-BTC mode (see renderHistorySectio
 let showWithdrawalAdj = true; // withdrawal-adjusted line on the history chart (toggled like vs BTC)
 let btcCompareMode = false;
 let privateTabEnabled = false;
+// Private tab shows its amounts in homeCurrency instead of USD (the USD/DKK switch).
+// A preference like historyLogScale - persisted, not snapshotted.
+let privateShowHome = false;
 let btcPriceCache = {}; // 'YYYY-MM-01' -> price
 let airdrops = [];
 let nextAirdropId = 1;
@@ -3109,6 +3201,7 @@ function loadState() {
   cryptoSectorCache    = saved.cryptoSectorCache || {};
   donutGroupMode       = DONUT_MODES.indexOf(saved.donutGroupMode) >= 0 ? saved.donutGroupMode : 'asset';
   showWithdrawalAdj    = saved.showWithdrawalAdj !== false; // on unless explicitly turned off
+  privateShowHome      = saved.privateShowHome || false;
   if (saved.fxRates) {
     fxRates = { ...FALLBACK_RATES, ...saved.fxRates };
     fxLastUpdated = saved.fxLastUpdated ? new Date(saved.fxLastUpdated) : null;
@@ -3149,6 +3242,8 @@ function buildStateJson() {
       direction: p.direction || null,
       physical: p.physical || false,
       hasCostBasis: p.hasCostBasis || false,
+      // CS skins only - other rows stay exactly as they were
+      ...(p.skin ? { skin: true, exterior: p.exterior || '', variant: p.variant || '', float: p.float ?? null, marketHashName: p.marketHashName || '' } : {}),
     })),
     cashPositions,
     closedTrades,
@@ -3158,7 +3253,7 @@ function buildStateJson() {
     nextPrivateAssetId, nextPrivateCashId,
     airdrops, nextAirdropId,
     activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode,
-    historyWindow, historyLogScale, showWithdrawalAdj, paletteVersion: PALETTE_VERSION,
+    historyWindow, historyLogScale, showWithdrawalAdj, privateShowHome, paletteVersion: PALETTE_VERSION,
     cryptoSectorCache, donutGroupMode,
     savedAt: Date.now() // informational only — tells two same-day backup files apart
   });
@@ -3606,7 +3701,7 @@ async function fetchPrices() {
   // KNOWN_PRICE_SOURCES takes priority over whatever coingeckoId is stored (fixes stale/wrong IDs)
   const cgMap = {};
   portfolio.forEach(p => {
-    if (p.physical) return;
+    if (p.physical || p.skin) return; // skins price off Steam (fetchSteamPrices)
     const known = KNOWN_PRICE_SOURCES[p.ticker?.toUpperCase()];
     const cgId = (known?.coingeckoId) || p.coingeckoId;
     if (cgId) { p._resolvedCgId = cgId; cgMap[cgId] = true; }
@@ -3635,7 +3730,7 @@ async function fetchPrices() {
   // Binance cross-check — verify CoinGecko prices against Binance for tokens with a known USDT pair
   const bnMap = {}; // binanceTicker -> portfolio position
   portfolio.forEach(p => {
-    if (p.physical) return;
+    if (p.physical || p.skin) return;
     const known = KNOWN_PRICE_SOURCES[p.ticker?.toUpperCase()];
     if (known?.binanceTicker) bnMap[known.binanceTicker] = p;
   });
@@ -3669,7 +3764,7 @@ async function fetchPrices() {
   }
 
   // Yahoo Finance — via CORS proxy, one call per stock
-  const yahooPositions = portfolio.filter(p => p.yahooTicker);
+  const yahooPositions = portfolio.filter(p => p.yahooTicker && !p.skin);
   for (const p of yahooPositions) {
     try {
       const url   = `https://query1.finance.yahoo.com/v8/finance/chart/${p.yahooTicker}?interval=1d&range=1d`;
@@ -4107,7 +4202,7 @@ function renderTable(data) {
             ${editMode ? `onclick="cycleColor(${p.posId})" title="Click to change color"` : ''}>${p.ticker.slice(0,4)}</div>
           <div>
             <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}">${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}</span>` : ''}${invalidationBreached(p) ? `<span style="color:var(--red);margin-left:5px;cursor:help" title="Invalidation level crossed (${fmtNative(p.invalidationPrice, p.currency)}) — check your thesis">⚠</span>` : ''}</div>
-            <div class="asset-ticker">${escHtml(p.ticker)}</div>
+            <div class="asset-ticker">${escHtml(p.skin ? (csSkinDetail(p) || p.ticker) : p.ticker)}</div>
           </div>
         </div>
       </td>
@@ -4251,9 +4346,10 @@ function showCloseModal(posId) {
   const p = portfolio.find(p => p.posId === posId);
   if (!p) return;
   _closingPosId = posId;
-  document.getElementById('closeModalTitle').textContent = `Close ${p.ticker}`;
+  // A skin's ticker is only a made-up row code - selling one reads better by its name.
+  document.getElementById('closeModalTitle').textContent = p.skin ? `Sell ${p.name}` : `Close ${p.ticker}`;
   document.getElementById('closeModalDesc').innerHTML =
-    `<strong>${fmtUnits(p.units)} ${p.ticker}</strong> · entry ${fmtNative(p.entryPrice, p.currency)}` +
+    `<strong>${p.skin ? `${p.units} × ${escHtml(p.name)}` : `${fmtUnits(p.units)} ${p.ticker}`}</strong> · ${p.skin ? 'paid' : 'entry'} ${fmtNative(p.entryPrice, p.currency)}` +
     (p.realizedPnl ? ` · +${fmtUsd(p.realizedPnl)} already realized` : '');
   document.getElementById('closePrice').value = p.currentPrice.toFixed(p.currentPrice >= 1 ? 2 : 4);
   document.getElementById('closeOutcome').value = '';
@@ -5446,35 +5542,49 @@ function recalcPerpUnits() {
 
 function showAddModal(mode) {
   _editPosId = null;
-  _addMode = mode === 'perp' ? 'perp' : mode === 'physical' ? 'physical' : 'spot';
+  _addMode = ['perp', 'physical', 'skin'].includes(mode) ? mode : 'spot';
   const perp     = _addMode === 'perp';
   const physical = _addMode === 'physical';
-  document.getElementById('addModalTitle').textContent    = physical ? 'Add Physical Asset' : perp ? 'Add Leverage Position' : 'Add Asset';
-  document.getElementById('addModalSubmitBtn').textContent = physical ? 'Add Asset'          : perp ? 'Add Position'         : 'Add Asset';
+  const skin     = _addMode === 'skin';
+  document.getElementById('addModalTitle').textContent    = physical ? 'Add Physical Asset' : perp ? 'Add Leverage Position' : skin ? 'Add CS Skin' : 'Add Asset';
+  document.getElementById('addModalSubmitBtn').textContent = physical ? 'Add Asset'          : perp ? 'Add Position'         : skin ? 'Add Skin'    : 'Add Asset';
   document.getElementById('leverage-fields').style.display   = perp ? 'block' : 'none';
   document.getElementById('fund-from-cash-row').style.display = perp ? 'none' : 'block';
   // Physical assets have no ticker, units, live price, targets, price-source IDs or thesis.
-  const hidePhysical = physical ? 'none' : '';
-  document.getElementById('f-ticker-group').style.display     = hidePhysical;
-  document.getElementById('f-units-group').style.display      = hidePhysical;
-  document.getElementById('f-tp-row').style.display           = hidePhysical;
-  document.getElementById('f-tp-help').style.display          = hidePhysical;
-  document.getElementById('f-ids-row').style.display          = hidePhysical;
-  document.getElementById('f-thesis-group').style.display     = hidePhysical;
-  document.getElementById('f-thesisboard-group').style.display = hidePhysical;
-  // Relabel the two price fields when adding a physical asset.
-  document.getElementById('lbl-entry').innerHTML   = physical
-    ? 'Purchase Price <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional — for gain/loss</span>'
-    : 'Avg Entry Price';
-  document.getElementById('lbl-current').textContent = physical ? 'Current Value' : 'Current Price';
-  document.getElementById('f-name').placeholder    = physical ? 'e.g. Tesla Model 3' : 'e.g. Bitcoin';
+  // Skins have units (quantity) and a live price, but from Steam - not a ticker or an ID.
+  const hideNoTicker = physical || skin ? 'none' : '';
+  document.getElementById('f-ticker-group').style.display     = hideNoTicker;
+  document.getElementById('f-units-group').style.display      = physical ? 'none' : '';
+  document.getElementById('f-tp-row').style.display           = hideNoTicker;
+  document.getElementById('f-tp-help').style.display          = hideNoTicker;
+  document.getElementById('f-ids-row').style.display          = hideNoTicker;
+  document.getElementById('f-thesis-group').style.display     = hideNoTicker;
+  document.getElementById('f-thesisboard-group').style.display = hideNoTicker;
+  document.getElementById('f-sector-group').style.display     = skin ? 'none' : ''; // always "CS Skins"
+  document.getElementById('f-skin-fields').style.display      = skin ? '' : 'none';
+  // Relabel the fields for physical assets and skins.
+  const hint = t => ` <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">${t}</span>`;
+  document.getElementById('lbl-entry').innerHTML   = physical ? 'Purchase Price' + hint('optional — for gain/loss')
+                                                   : skin     ? 'Buy Price (each)' : 'Avg Entry Price';
+  document.getElementById('lbl-current').innerHTML = physical ? 'Current Value'
+                                                   : skin     ? 'Current Price' + hint('optional — auto from Steam') : 'Current Price';
+  document.getElementById('lbl-units').textContent = skin ? 'Quantity' : 'Units / Amount Held';
+  document.getElementById('f-name').placeholder    = physical ? 'e.g. Tesla Model 3' : skin ? 'e.g. AK-47 | Redline' : 'e.g. Bitcoin';
   const secSel = document.getElementById('f-sector-select');
   secSel.innerHTML = sectorOptionsHtml(physical);
   secSel.value = '';
   document.getElementById('f-sector').style.display = 'none';
   document.getElementById('f-sector').placeholder  = physical ? 'e.g. Vehicle, Real Estate' : 'e.g. Crypto, Technology';
-  document.getElementById('f-entry').placeholder   = physical ? 'what you paid' : 'e.g. 45000';
-  document.getElementById('f-current').placeholder = physical ? 'e.g. 50000' : 'e.g. 95000';
+  document.getElementById('f-entry').placeholder   = physical || skin ? 'what you paid' : 'e.g. 45000';
+  document.getElementById('f-current').placeholder = physical ? 'e.g. 50000' : skin ? 'auto' : 'e.g. 95000';
+  if (skin) {
+    document.getElementById('f-units').value    = '1';
+    document.getElementById('f-exterior').value = 'Field-Tested';
+    document.getElementById('f-variant').value  = '';
+    document.getElementById('f-float').value    = '';
+    document.getElementById('f-steam').value    = '';
+    _csMainSteamTouched = false;
+  }
   setAddDirection('long');
   document.getElementById('addModal').classList.add('open');
   // populate cash funding dropdown with current balances
@@ -5493,7 +5603,7 @@ function showAddModal(mode) {
 
 function hideAddModal() {
   document.getElementById('addModal').classList.remove('open');
-  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-invalidation','f-thesis','f-margin','f-coingecko','f-yahoo'].forEach(id => {
+  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-invalidation','f-thesis','f-margin','f-coingecko','f-yahoo','f-float','f-steam'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-currency').value = 'USD';
@@ -5558,6 +5668,55 @@ function submitPhysicalAsset() {
   renderAll();
 }
 
+// The skin fields of the main add modal, validated. Shared by add and edit.
+// Returns { error } or the values. Unlike a physical asset the buy price is required: a skin
+// is a position with a moving price, so without a cost basis the P&L would mean nothing.
+function readSkinForm() {
+  const val  = id => document.getElementById(id).value;
+  const name = val('f-name').trim();
+  if (!name) return { error: 'Name is required.' };
+  const units = parseUserNumber(val('f-units'));
+  if (isNaN(units) || units <= 0) return { error: 'Enter a valid quantity.' };
+  const entry = parseUserNumber(val('f-entry'));
+  if (isNaN(entry) || entry <= 0) return { error: 'Enter what you paid per item.' };
+  const float = parseCsFloat(val('f-float'));
+  if (float !== null && !(float >= 0 && float <= 1)) return { error: 'Float must be between 0 and 1.' };
+  const exterior = val('f-exterior'), variant = val('f-variant');
+  const current  = parseUserNumber(val('f-current'));
+  return { name, units, entry, float, exterior, variant,
+           current: current > 0 ? current : null, // null = keep / wait for Steam
+           currency: val('f-currency') || 'USD',
+           marketHashName: val('f-steam').trim() || csMarketName(name, exterior, variant) };
+}
+
+function submitSkinAsset() {
+  const f = readSkinForm();
+  if (f.error) { document.getElementById('f-error').textContent = f.error; return; }
+  const ticker = derivePhysicalTicker(f.name); // a row-dot code, never priced (fetchPrices skips skins)
+  const { color, bg } = nextColorFor(ticker);
+  pushUndo(`add ${f.name}`);
+  portfolio.push({ name: f.name, ticker, sector: 'CS Skins', units: f.units, entryPrice: f.entry, currentPrice: f.current || f.entry,
+    targetPrice: null, invalidationPrice: null, currency: f.currency, color, bg, thesis: '', leveraged: false, marginUSD: null,
+    showThesis: false, coingeckoId: null, yahooTicker: null, direction: null, hasCostBasis: true,
+    skin: true, exterior: f.exterior, variant: f.variant, float: f.float, marketHashName: f.marketHashName,
+    openedDate: today(), posId: nextPosId++ });
+
+  const fundCashId = parseInt(document.getElementById('f-fund-cash').value);
+  if (fundCashId) {
+    const cashPos = cashPositions.find(c => c.id === fundCashId);
+    if (cashPos) {
+      const costUSD    = f.units * f.entry * (fxRates[f.currency.toUpperCase()] ?? 1);
+      const cashFxRate = fxRates[(cashPos.currency || 'USD').toUpperCase()] ?? 1;
+      cashPos.amount = Math.max(0, cashPos.amount - costUSD / cashFxRate);
+    }
+  }
+
+  saveState();
+  hideAddModal();
+  renderAll();
+  fetchSteamPrices();
+}
+
 // ── EDIT AN EXISTING POSITION ────────────────────────────────
 // Reuses the add-asset modal rather than duplicating it: same fields, same validation, but the
 // submit writes back into the position instead of pushing a new one. posId is the handle (not
@@ -5580,9 +5739,9 @@ function setSectorField(sector) {
 function showEditModal(posId) {
   const p = portfolio.find(x => x.posId === posId);
   if (!p) return;
-  showAddModal(p.physical ? 'physical' : p.leveraged ? 'perp' : 'spot');
+  showAddModal(p.physical ? 'physical' : p.skin ? 'skin' : p.leveraged ? 'perp' : 'spot');
   _editPosId = posId;
-  document.getElementById('addModalTitle').textContent     = p.physical ? 'Edit Physical Asset' : p.leveraged ? 'Edit Leverage Position' : 'Edit Position';
+  document.getElementById('addModalTitle').textContent     = p.physical ? 'Edit Physical Asset' : p.skin ? 'Edit CS Skin' : p.leveraged ? 'Edit Leverage Position' : 'Edit Position';
   document.getElementById('addModalSubmitBtn').textContent = 'Save Changes';
   document.getElementById('fund-from-cash-row').style.display = 'none';
   const set = (id, v) => { document.getElementById(id).value = (v == null ? '' : v); };
@@ -5594,6 +5753,16 @@ function showEditModal(posId) {
     // was entered, so re-saving does not silently declare the current value as a purchase price.
     set('f-entry',   p.hasCostBasis ? p.entryPrice : '');
     set('f-current', p.currentPrice);
+  } else if (p.skin) {
+    set('f-units', p.units);
+    set('f-entry', p.entryPrice);
+    set('f-current', p.currentPrice);
+    set('f-exterior', p.exterior || '');
+    set('f-variant', p.variant || '');
+    set('f-float', p.float);
+    set('f-steam', p.marketHashName);
+    // A Steam name that differs from what the fields would build was typed by hand - keep it.
+    _csMainSteamTouched = (p.marketHashName || '') !== csMarketName(p.name, p.exterior, p.variant);
   } else {
     set('f-ticker', p.ticker);
     set('f-units', p.units);
@@ -5642,6 +5811,15 @@ function submitEditAsset() {
     p.currentPrice = value;
     p.hasCostBasis = hasCostBasis;
     p.entryPrice   = hasCostBasis ? purchRaw : value;
+  } else if (p.skin) {
+    const f = readSkinForm();
+    if (f.error) { err.textContent = f.error; return; }
+    const renamed = f.marketHashName !== p.marketHashName;
+    pushUndo(`edit ${p.name}`);
+    Object.assign(p, { name: f.name, units: f.units, entryPrice: f.entry, currency: f.currency,
+      exterior: f.exterior, variant: f.variant, float: f.float, marketHashName: f.marketHashName });
+    if (f.current) p.currentPrice = f.current;
+    if (renamed) fetchSteamPrices(); // a different item - price it now (async, lands after the save below)
   } else {
     const ticker  = val('f-ticker').trim().toUpperCase();
     const units   = num('f-units');
@@ -5691,6 +5869,7 @@ function submitEditAsset() {
 function submitAddAsset() {
   if (_editPosId != null)      { submitEditAsset(); return; }
   if (_addMode === 'physical') { submitPhysicalAsset(); return; }
+  if (_addMode === 'skin')     { submitSkinAsset(); return; }
   const name     = document.getElementById('f-name').value.trim();
   const ticker   = document.getElementById('f-ticker').value.trim().toUpperCase();
   const sector   = document.getElementById('f-sector').value.trim() || 'Other';
@@ -7142,9 +7321,46 @@ function companyNetWorthUSD() {
   return data.reduce((s, p) => s + p.equityValue, 0) + cashTotalUSD(data);
 }
 
+// The USD / home-currency switch. Only a display choice: everything is still stored and
+// summed in USD, and converted once, here, on the way to the screen.
+function privateCur() {
+  return privateShowHome && homeCurrency !== 'USD' ? homeCurrency : 'USD';
+}
+function fmtPriv(usd) {
+  const cur = privateCur();
+  if (cur === 'USD') return fmtUsd(usd);
+  if (privacyMode) return '••••• ' + cur;
+  const v = usd / (fxRates[cur] ?? 1);
+  const abs = Math.abs(v);
+  const s = abs >= 1e6 ? (abs / 1e6).toFixed(2) + 'M'
+          : abs >= 1e3 ? abs.toLocaleString('en-US', { maximumFractionDigits: 0 })
+          : abs.toFixed(2);
+  return (v < 0 ? '-' : '') + s + ' ' + cur;
+}
+// The other currency, for the small line under a card total.
+function fmtPrivAlt(usd) {
+  return privateCur() === 'USD' ? fmtHome(usd) : fmtUsd(usd);
+}
+function setPrivateShowHome(on) {
+  privateShowHome = !!on;
+  saveState();
+  renderPrivateTab();
+}
+function renderPrivateCurSwitch() {
+  const row = document.getElementById('privateCurRow');
+  if (!row) return;
+  row.style.display = homeCurrency === 'USD' ? 'none' : ''; // nothing to switch to
+  const home = privateCur() !== 'USD';
+  document.getElementById('privCur-usd').classList.toggle('active', !home);
+  const hb = document.getElementById('privCur-home');
+  hb.classList.toggle('active', home);
+  hb.textContent = homeCurrency;
+}
+
 let privateSplitChartInstance = null;
 
 function renderPrivateTab() {
+  renderPrivateCurSwitch();
   renderPrivateSummary();
   renderPrivateSplitChart();
   renderPrivateAssets();
@@ -7183,7 +7399,7 @@ function renderPrivateSplitChart() {
     options: {
       cutout: '70%', responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: {
-        callbacks: { label: ctx => ` ${fmtUsd(ctx.raw)} (${(ctx.raw/combined*100).toFixed(1)}%)` }
+        callbacks: { label: ctx => ` ${fmtPriv(ctx.raw)} (${(ctx.raw/combined*100).toFixed(1)}%)` }
       }}
     }
   });
@@ -7191,7 +7407,7 @@ function renderPrivateSplitChart() {
   document.getElementById('privateSplitLegend').innerHTML = `
     <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(0,212,255,0.85);display:inline-block"></span><span style="color:var(--text2)">Company</span><span style="font-family:var(--mono);color:var(--cyan);margin-left:4px">${companyPct}%</span></div>
     <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(139,92,246,0.85);display:inline-block"></span><span style="color:var(--text2)">Private</span><span style="font-family:var(--mono);color:#8b5cf6;margin-left:4px">${privatePct}%</span></div>
-    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text3)">${fmtUsd(combined)} total</div>
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text3)">${fmtPriv(combined)} total</div>
   `;
 }
 
@@ -7217,24 +7433,24 @@ function renderPrivateSummary() {
           }
         </button>
       </div>
-      <div class="card-value">${fmtUsd(combined)}</div>
-      ${homeCurrency !== 'USD' ? `<div class="card-sub">${fmtHome(combined)}</div>` : ''}
+      <div class="card-value">${fmtPriv(combined)}</div>
+      ${homeCurrency !== 'USD' ? `<div class="card-sub">${fmtPrivAlt(combined)}</div>` : ''}
       <div class="card-sub" style="margin-top:2px">Company + Private</div>
     </div>
     <div class="card accent-cyan">
       <div class="card-label">Private Net Worth</div>
-      <div class="card-value">${fmtUsd(total)}</div>
-      ${homeCurrency !== 'USD' ? `<div class="card-sub">${fmtHome(total)}</div>` : ''}
+      <div class="card-value">${fmtPriv(total)}</div>
+      ${homeCurrency !== 'USD' ? `<div class="card-sub">${fmtPrivAlt(total)}</div>` : ''}
     </div>
     <div class="card accent-green">
       <div class="card-label">Private Assets</div>
-      <div class="card-value" style="font-size:20px">${fmtUsd(assets)}</div>
+      <div class="card-value" style="font-size:20px">${fmtPriv(assets)}</div>
       <div class="card-sub">${privateAssets.length} holding${privateAssets.length !== 1 ? 's' : ''}</div>
-      ${hasInvestPnl ? `<div class="card-sub" style="margin-top:2px;color:${investPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${privacyMode ? '•••••' : `${investPnl >= 0 ? '+' : ''}${fmtUsd(investPnl)} (${investPnlPct >= 0 ? '+' : ''}${investPnlPct.toFixed(1)}%)`} unrealized</div>` : ''}
+      ${hasInvestPnl ? `<div class="card-sub" style="margin-top:2px;color:${investPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${privacyMode ? '•••••' : `${investPnl >= 0 ? '+' : ''}${fmtPriv(investPnl)} (${investPnlPct >= 0 ? '+' : ''}${investPnlPct.toFixed(1)}%)`} unrealized</div>` : ''}
     </div>
     <div class="card accent-amber">
       <div class="card-label">Private Cash</div>
-      <div class="card-value" style="font-size:20px">${fmtUsd(cash)}</div>
+      <div class="card-value" style="font-size:20px">${fmtPriv(cash)}</div>
       <div class="card-sub">${privateCash.length} account${privateCash.length !== 1 ? 's' : ''}</div>
     </div>
   `;
@@ -7254,6 +7470,7 @@ function renderPrivateAssets() {
       valueCell = '<span style="font-family:var(--mono);color:var(--text3)">•••••</span>';
       pnlCell   = '<span style="font-family:var(--mono);color:var(--text3)">•••••</span>';
     } else if (isTrackedPrivate(a)) {
+      const skin = a.category === 'CS Skins';
       const priceStr = a.currentPrice ? fmtNative(a.currentPrice, a.currency) : '<span style="color:var(--text3)">fetching…</span>';
       valueCell = `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
         <input class="price-editable" type="text"
@@ -7262,7 +7479,7 @@ function renderPrivateAssets() {
           onblur="updatePrivateAssetUnits(${a.id}, this.value)"
           onkeydown="if(event.key==='Enter')this.blur()"
           style="width:72px;text-align:right"
-        /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${escHtml(a.ticker)} @</span>
+        /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${skin ? '×' : escHtml(a.ticker) + ' @'}</span>
         <input class="price-editable" type="text"
           value="${editMode ? (a.currentPrice ?? '') : ''}"
           ${editMode ? `placeholder="price"` : 'readonly tabindex="-1"'}
@@ -7270,7 +7487,7 @@ function renderPrivateAssets() {
           onkeydown="if(event.key==='Enter')this.blur()"
           style="width:${editMode ? '72px' : '0;display:none'};text-align:right"
         /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${editMode ? escHtml(a.currency) : priceStr}</span>
-      </div>${a.entryPrice ? `<div style="font-size:10px;color:var(--text3);font-family:var(--mono);text-align:right;margin-top:2px">avg ${fmtNative(a.entryPrice, a.currency)}</div>` : ''}`;
+      </div>${a.entryPrice ? `<div style="font-size:10px;color:var(--text3);font-family:var(--mono);text-align:right;margin-top:2px">${skin ? 'paid' : 'avg'} ${fmtNative(a.entryPrice, a.currency)}</div>` : ''}`;
       pnlCell = pnl
         ? `<span class="num" style="color:${pnl.pnlUSD >= 0 ? 'var(--green)' : 'var(--red)'}">${pnl.pnlPct >= 0 ? '+' : ''}${pnl.pnlPct.toFixed(1)}%</span>`
         : '<span style="color:var(--text3)">—</span>';
@@ -7286,11 +7503,12 @@ function renderPrivateAssets() {
       </div>`;
       pnlCell = '<span style="color:var(--text3)">—</span>';
     }
+    const sub = a.category === 'CS Skins' ? csSkinDetail(a) : '';
     return `<tr>
-      <td style="font-weight:600">${escHtml(a.name)}</td>
+      <td style="font-weight:600">${escHtml(a.name)}${sub ? `<div class="private-sub">${escHtml(sub)}</div>` : ''}</td>
       <td><span class="private-cat-badge">${a.category}</span></td>
       <td class="right">${valueCell}</td>
-      <td class="right">${fmtUsd(usd)}</td>
+      <td class="right">${fmtPriv(usd)}</td>
       <td class="right">${pnlCell}</td>
       <td><button class="private-del-btn" onclick="removePrivateAsset(${a.id})" title="Remove">×</button></td>
     </tr>`;
@@ -7298,7 +7516,7 @@ function renderPrivateAssets() {
   el.innerHTML = `<table class="private-table">
     <thead><tr>
       <th>Name</th><th>Category</th>
-      <th class="right">Holding / Value</th><th class="right">USD</th><th class="right">P&L</th>
+      <th class="right">Holding / Value</th><th class="right">${privateCur()}</th><th class="right">P&L</th>
       <th></th>
     </tr></thead>
     <tbody>${rows}</tbody>
@@ -7329,7 +7547,7 @@ function renderPrivateCash() {
     return `<tr>
       <td style="font-weight:600">${escHtml(c.label)}</td>
       <td class="right">${amountCell}</td>
-      <td class="right">${fmtUsd(usd)}</td>
+      <td class="right">${fmtPriv(usd)}</td>
       <td style="white-space:nowrap">
         <button class="private-del-btn" style="margin-right:4px" onclick="editPrivateCash(${c.id})" title="Edit">✎</button>
         <button class="private-del-btn" onclick="removePrivateCash(${c.id})" title="Remove">×</button>
@@ -7339,7 +7557,7 @@ function renderPrivateCash() {
   el.innerHTML = `<table class="private-table">
     <thead><tr>
       <th>Account / Label</th>
-      <th class="right">Amount</th><th class="right">USD</th>
+      <th class="right">Amount</th><th class="right">${privateCur()}</th>
       <th></th>
     </tr></thead>
     <tbody>${rows}</tbody>
@@ -7350,21 +7568,108 @@ function renderPrivateCash() {
 
 // Which private categories are tracked as live positions (units + price + P&L) vs. lump-sum values.
 function isTrackedPrivate(a) {
-  return a.category === 'Crypto' || a.category === 'Stocks / Shares';
+  return a.category === 'Crypto' || a.category === 'Stocks / Shares' || a.category === 'CS Skins';
 }
+
+// ── CS SKINS ──
+// A skin is a tracked holding (quantity × price) priced off the Steam Community Market, which
+// identifies an item by its exact "market hash name": [★ ][StatTrak™ |Souvenir ]Name[ (Exterior)].
+// The star marks knives and gloves; the exterior is left off for things with no wear (cases,
+// stickers, agents, vanilla knives). Checked against live Steam responses 2026-09-11.
+const CS_EXTERIORS = [ // float ranges, [min, max)
+  ['Factory New', 0.07], ['Minimal Wear', 0.15], ['Field-Tested', 0.38], ['Well-Worn', 0.45], ['Battle-Scarred', 1.0001],
+];
+const CS_STAR_ITEMS = [
+  'Bayonet', 'Bowie Knife', 'Butterfly Knife', 'Classic Knife', 'Falchion Knife', 'Flip Knife', 'Gut Knife',
+  'Huntsman Knife', 'Karambit', 'Kukri Knife', 'M9 Bayonet', 'Navaja Knife', 'Nomad Knife', 'Paracord Knife',
+  'Shadow Daggers', 'Skeleton Knife', 'Stiletto Knife', 'Survival Knife', 'Talon Knife', 'Ursus Knife',
+  'Bloodhound Gloves', 'Broken Fang Gloves', 'Driver Gloves', 'Hand Wraps', 'Hydra Gloves', 'Moto Gloves',
+  'Specialist Gloves', 'Sport Gloves',
+];
+function csExteriorFromFloat(f) {
+  if (typeof f !== 'number' || !(f >= 0 && f <= 1)) return null;
+  return CS_EXTERIORS.find(([, max]) => f < max)[0];
+}
+function csMarketName(name, exterior, variant) {
+  // Tolerate a name typed the way Steam shows it, so nothing ends up doubled.
+  let base = (name || '').trim()
+    .replace(/^★\s*/, '')
+    .replace(/^(StatTrak™?|Souvenir)\s+/i, '')
+    .replace(/\s*\((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)\s*$/i, '');
+  if (!base) return '';
+  const star = CS_STAR_ITEMS.some(t => base === t || base.startsWith(t + ' |'));
+  const v = variant === 'Souvenir' && star ? '' : (variant ? variant + ' ' : ''); // no souvenir knives
+  return (star ? '★ ' : '') + v + base + (exterior ? ` (${exterior})` : '');
+}
+// Steam's priceoverview answer -> USD per item, or null. Median of recent sales first (what
+// things actually sold for), cheapest listing as the fallback. Items over Steam's ~$2,000 cap
+// come back as {success:true} with no prices at all.
+function steamPriceUSD(data) {
+  if (!data || !data.success) return null;
+  const raw = data.median_price || data.lowest_price;
+  if (!raw) return null;
+  const v = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+  return isFinite(v) && v > 0 ? v : null;
+}
+// "StatTrak™ · Field-Tested · 0.2134" under the row name.
+function csSkinDetail(a) {
+  return [a.variant, a.exterior, a.float != null ? String(a.float) : ''].filter(Boolean).join(' · ');
+}
+// A float is always 0.xxx, so a comma can only be a decimal mark. Not parseUserNumber: that
+// reads "0,2134" (comma + 4 digits) as thousands grouping.
+function parseCsFloat(raw) {
+  const s = String(raw || '').trim().replace(',', '.');
+  return s ? Number(s) : null;
+}
+// The same five skin inputs live in two modals: the Private tab's ('pa-name', 'pa-exterior', ...)
+// and the main add modal's ('f-name', 'f-exterior', ...). These take the id prefix.
+function csFillSteamName(px) {
+  const g = id => document.getElementById(px + id);
+  g('steam').value = csMarketName(g('name').value, g('exterior').value, g('variant').value);
+}
+function csFloatToExterior(px) {
+  const ext = csExteriorFromFloat(parseCsFloat(document.getElementById(px + 'float').value));
+  if (ext) document.getElementById(px + 'exterior').value = ext;
+  return !!ext;
+}
+// A Steam name field typed in by hand stops auto-filling, one flag per modal.
+let _csSteamTouched = false;     // Private tab modal
+let _csMainSteamTouched = false; // main add modal
+function onPrivateCsInput() {
+  if (document.getElementById('pa-category').value !== 'CS Skins' || _csSteamTouched) return;
+  csFillSteamName('pa-');
+}
+function onPrivateFloatInput() { if (csFloatToExterior('pa-')) onPrivateCsInput(); }
+function onMainCsInput() {
+  if (_addMode !== 'skin' || _csMainSteamTouched) return;
+  csFillSteamName('f-');
+}
+function onMainFloatInput() { if (csFloatToExterior('f-')) onMainCsInput(); }
+
 function onPrivateCategoryChange() {
   const cat    = document.getElementById('pa-category').value;
   const crypto = cat === 'Crypto';
   const stock  = cat === 'Stocks / Shares';
-  const tracked = crypto || stock;
+  const skin   = cat === 'CS Skins';
+  const tracked = crypto || stock || skin;
   document.getElementById('pa-tracked-fields').style.display = tracked ? '' : 'none';
   document.getElementById('pa-manual-fields').style.display  = tracked ? 'none' : '';
-  // Crypto prices come from CoinGecko in USD; stocks come from Yahoo in the exchange's native currency.
-  document.getElementById('pa-tcurrency-group').style.display = stock  ? '' : 'none';
+  // Crypto prices come from CoinGecko in USD; stocks come from Yahoo in the exchange's native currency;
+  // skins come from Steam in USD and are converted into whatever currency the price is kept in.
+  document.getElementById('pa-tcurrency-group').style.display = stock || skin ? '' : 'none';
   document.getElementById('pa-coingecko-group').style.display = crypto ? '' : 'none';
   document.getElementById('pa-yahoo-group').style.display     = stock  ? '' : 'none';
+  document.getElementById('pa-steam-group').style.display     = skin   ? '' : 'none';
+  document.getElementById('pa-cs-fields').style.display       = skin   ? 'grid' : 'none';
+  document.getElementById('pa-float-group').style.display     = skin   ? '' : 'none';
+  document.getElementById('pa-ticker-group').style.display    = skin   ? 'none' : '';
+  document.getElementById('pa-units-label').textContent       = skin   ? 'Quantity' : 'Units';
+  document.getElementById('pa-entry-label').textContent       = skin   ? 'Buy Price (each)' : 'Avg Buy Price';
+  document.getElementById('pa-name').placeholder              = skin   ? 'e.g. AK-47 | Redline' : 'e.g. Apartment';
+  if (skin && !document.getElementById('pa-units').value) document.getElementById('pa-units').value = '1';
   if (crypto) document.getElementById('pa-tcurrency').value = 'USD';
-  else if (stock) document.getElementById('pa-tcurrency').value = homeCurrency;
+  else if (stock || skin) document.getElementById('pa-tcurrency').value = homeCurrency;
+  onPrivateCsInput();
 }
 function onPrivateTickerInput() {
   const ticker = document.getElementById('pa-ticker').value.trim().toUpperCase();
@@ -7374,9 +7679,12 @@ function onPrivateTickerInput() {
 }
 
 function showAddPrivateAssetModal() {
-  ['pa-name','pa-ticker','pa-coingecko','pa-yahoo','pa-entry','pa-current'].forEach(id => document.getElementById(id).value = '');
+  ['pa-name','pa-ticker','pa-coingecko','pa-yahoo','pa-entry','pa-current','pa-float','pa-steam'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('pa-value').value = '';
   document.getElementById('pa-units').value = '';
+  document.getElementById('pa-exterior').value = 'Field-Tested';
+  document.getElementById('pa-variant').value = '';
+  _csSteamTouched = false;
   document.getElementById('pa-error').textContent = '';
   document.getElementById('pa-category').value = 'Real Estate';
   document.getElementById('pa-currency').value = homeCurrency;
@@ -7393,7 +7701,25 @@ function submitPrivateAsset() {
   const category = document.getElementById('pa-category').value;
   if (!name) { document.getElementById('pa-error').textContent = 'Name is required.'; return; }
 
-  if (category === 'Crypto' || category === 'Stocks / Shares') {
+  if (category === 'CS Skins') {
+    const err = msg => { document.getElementById('pa-error').textContent = msg; };
+    const units = parseUserNumber(document.getElementById('pa-units').value);
+    if (isNaN(units) || units <= 0) return err('Enter a valid quantity.');
+    const float = parseCsFloat(document.getElementById('pa-float').value);
+    if (float !== null && !(float >= 0 && float <= 1)) return err('Float must be between 0 and 1.');
+    const exterior = document.getElementById('pa-exterior').value;
+    const variant  = document.getElementById('pa-variant').value;
+    const marketHashName = document.getElementById('pa-steam').value.trim() || csMarketName(name, exterior, variant);
+    const currency = document.getElementById('pa-tcurrency').value || 'USD';
+    const entryRaw = parseUserNumber(document.getElementById('pa-entry').value);
+    const hasCostBasis = entryRaw > 0;
+    const entryPrice = hasCostBasis ? entryRaw : null;
+    const curRaw = parseUserNumber(document.getElementById('pa-current').value);
+    const currentPrice = curRaw > 0 ? curRaw : entryPrice;
+    pushUndo(`add ${name}`);
+    privateAssets.push({ id: nextPrivateAssetId++, name, category, ticker: '', units, entryPrice, currentPrice, currency, hasCostBasis,
+                         exterior, variant, float, marketHashName });
+  } else if (category === 'Crypto' || category === 'Stocks / Shares') {
     const crypto      = category === 'Crypto';
     const ticker      = document.getElementById('pa-ticker').value.trim().toUpperCase();
     const units       = parseFloat(document.getElementById('pa-units').value);
@@ -7433,6 +7759,7 @@ function removePrivateAsset(id) {
   renderPrivateTab();
 }
 
+const STEAM_FETCH_GAP_MS = 2000; // Steam's market endpoints allow roughly 20 calls a minute
 async function fetchPrivateCryptoPrices() {
   let updated = false;
 
@@ -7466,8 +7793,50 @@ async function fetchPrivateCryptoPrices() {
       }
     } catch(e) { /* silent fail — keep last known price */ }
   }
+  if (updated) { saveState(); renderAllSafe(); }
+  await fetchSteamPrices();
+}
 
-  if (updated) { saveState(); renderPrivateTab(); }
+// Every CS skin, wherever it lives: main-portfolio rows (p.skin) and Private-tab holdings.
+function allSkinHoldings() {
+  return [...portfolio.filter(p => p.skin), ...privateAssets.filter(a => a.category === 'CS Skins')]
+    .filter(h => h.marketHashName);
+}
+
+// CS Skins — Steam Community Market via the same proxy as Yahoo (Steam sends no CORS headers).
+// Steam throttles hard, so one request per distinct item across both tabs, spaced out, and only
+// on page load / after a skin is added or renamed - never on the 60s tick. Asked in USD and
+// converted into each holding's own currency. A call made while a run is going just asks that
+// run to go round once more (and resolves when it has), so two adds in a row never double
+// the request rate.
+let _steamRun = null, _steamAgain = false;
+function fetchSteamPrices() {
+  if (_steamRun) { _steamAgain = true; return _steamRun; }
+  // Cleared in .finally, never inside the run: with no skins the run finishes synchronously,
+  // and clearing there would happen before this assignment and leave a dead promise behind.
+  _steamRun = steamPriceRounds().finally(() => { _steamRun = null; });
+  return _steamRun;
+}
+async function steamPriceRounds() {
+  do {
+    _steamAgain = false;
+    const steamUSD = {};
+    for (const name of [...new Set(allSkinHoldings().map(h => h.marketHashName))]) {
+      try {
+        const url   = `https://steamcommunity.com/market/priceoverview/?appid=730&currency=1&market_hash_name=${encodeURIComponent(name)}`;
+        const res   = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+        const outer = await res.json();
+        steamUSD[name] = steamPriceUSD(JSON.parse(outer.contents));
+        await new Promise(r => setTimeout(r, STEAM_FETCH_GAP_MS));
+      } catch(e) { /* silent fail — keep last known price */ }
+    }
+    let updated = false;
+    allSkinHoldings().forEach(h => {
+      const usd = steamUSD[h.marketHashName];
+      if (usd) { h.currentPrice = usd / (fxRates[(h.currency || 'USD').toUpperCase()] ?? 1); updated = true; }
+    });
+    if (updated) { pricesLastUpdated = new Date(); saveState(); renderAllSafe(); }
+  } while (_steamAgain);
 }
 
 let _editingPrivateCashId = null;
