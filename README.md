@@ -9,12 +9,13 @@ A private, self-contained portfolio tracker that runs entirely in your browser. 
 - **No backend.** There is no server to send your data to. The entire app is the single `index.html` file in this repository — open it and read every line if you like.
 - **Your data stays in your browser.** Positions, notes, and history are stored in your browser's local storage on your device. Nothing is uploaded, ever.
 - **What you read is what you run.** The site is served by GitHub Pages directly from this public repository, so the code you can audit here is exactly the code running in your browser.
-- **The only network requests are price lookups** (CoinGecko, Binance, Yahoo Finance) and exchange rates — fetched directly from your browser, containing nothing but ticker symbols.
+- **The only network requests are price lookups** (CoinGecko, Binance, Yahoo Finance, the Steam Market for CS skins, Derive.xyz for options) and exchange rates — containing nothing but ticker symbols, item names or option contract names. Yahoo and Steam lookups go through the allorigins.win relay, because those sites refuse requests from web pages; the rest go straight from your browser. Cloud sync talks to GitHub only if you set it up.
 
 ## Features
 
 - **Holdings table** — positions with entry/current price, P&L, allocation, target prices, and leveraged-position support (margin vs. notional, linked cash tracking)
 - **Live prices** — automatic price updates for crypto (CoinGecko + Binance cross-check) and stocks (Yahoo Finance), with manual editing always available
+- **Options** — calls, puts and spreads held on Derive.xyz, priced live from Derive's public feed (read-only — nothing touches your Derive account), with a payoff chart, max profit/loss and break-even
 - **Multi-currency** — hold assets and cash in 10+ currencies with live FX conversion; pick your home currency and totals show in it alongside USD
 - **Net worth history** — monthly snapshots (auto-logged once you start), withdrawal-adjusted performance line, BTC comparison overlay
 - **Trade journal** — closed trades with win rate, average win/loss, profit factor, hold time, your original thesis preserved next to the outcome, and CSV export

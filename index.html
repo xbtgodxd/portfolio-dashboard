@@ -423,6 +423,16 @@ tr:hover td { background: var(--bg3); }
 .pt-derived .pt-big { font-size: 15px; }
 input[type="range"] { accent-color: var(--cyan); }
 .lev-sub { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 1px; }
+/* Options (Derive) - paid-mode toggle in the add modal, payoff chart + numbers in the detail modal */
+.opt-toggle { flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); color: var(--text2); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.opt-toggle.active { border-color: var(--cyan); color: var(--cyan); }
+.opt-chart { position: relative; margin-bottom: 4px; }
+.opt-chart svg { display: block; width: 100%; height: auto; }
+.opt-tip { position: absolute; top: 0; pointer-events: none; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-family: var(--mono); font-size: 11px; color: var(--text); white-space: nowrap; transform: translate(-50%, 0); }
+.opt-stats { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 12px; margin: 12px 0 0; }
+.opt-stats dt { color: var(--text3); }
+.opt-stats dd { margin: 0; font-family: var(--mono); color: var(--text); }
+.opt-note { font-size: 11px; color: var(--text3); line-height: 1.5; margin-top: 12px; }
 .price-editable {
   font-family: var(--mono);
   background: transparent;
@@ -1254,6 +1264,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><line x1="12" y1="1" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="23"/><line x1="1" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="23" y2="12"/></svg>
         Add CS Skin
       </button>
+      <button class="add-asset-btn" onclick="showAddModal('option')" title="Add an options position held on Derive.xyz — calls, puts and spreads, priced live from Derive">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 17 9 17 15 7 21 7"/></svg>
+        Add Option
+      </button>
     </div>
   </div>
   <div class="table-wrap" id="tableWrap">
@@ -1842,7 +1856,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       <button class="modal-close" onclick="hideAddModal()">✕</button>
     </div>
     <div class="form-row">
-      <div class="form-group">
+      <div class="form-group" id="f-name-group">
         <label class="form-label">Asset Name</label>
         <input class="form-input" id="f-name" placeholder="e.g. Bitcoin" oninput="onMainCsInput()" />
       </div>
@@ -1889,6 +1903,57 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         Steam can't list items above ~$2,000 — for those, type the price in Edit mode.
       </div>
     </div>
+    <!-- OPTION FIELDS (option mode only) — contracts listed on Derive.xyz, priced from Derive's public feed -->
+    <div id="f-option-fields" style="display:none">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Underlying</label>
+          <select class="form-input" id="f-opt-underlying" onchange="onOptUnderlyingChange()">
+            <option value="SOL">SOL</option>
+            <option value="BTC">BTC</option>
+            <option value="ETH">ETH</option>
+            <option value="HYPE">HYPE</option>
+            <option value="XRP">XRP</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Strategy</label>
+          <select class="form-input" id="f-opt-strategy" onchange="onOptStrategyChange()">
+            <option value="bullCall">Bull call spread</option>
+            <option value="bearPut">Bear put spread</option>
+            <option value="longCall">Long call</option>
+            <option value="longPut">Long put</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Expiry</label>
+          <select class="form-input" id="f-opt-expiry" onchange="onOptExpiryChange()"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">What you paid is</label>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="opt-toggle active" id="opt-paid-total" onclick="setOptPaidMode('total')">The total</button>
+            <button type="button" class="opt-toggle" id="opt-paid-each" onclick="setOptPaidMode('each')">Per spread</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" id="lbl-opt-buy">Buy strike (lower)</label>
+          <select class="form-input" id="f-opt-buy" onchange="_optStrikesTouched = true; updateOptPreview()"></select>
+        </div>
+        <div class="form-group" id="f-opt-sell-group">
+          <label class="form-label" id="lbl-opt-sell">Sell strike (higher)</label>
+          <select class="form-input" id="f-opt-sell" onchange="_optStrikesTouched = true; updateOptPreview()"></select>
+        </div>
+      </div>
+      <div id="f-opt-status" style="font-size:11px;color:var(--text3);line-height:1.6;margin-top:-4px;margin-bottom:8px;min-height:16px"></div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:16px">
+        On Derive one contract is one coin, so 10 SOL spreads = 10. Prices are Derive's mark price, read-only — nothing is ever sent to your Derive account.
+      </div>
+    </div>
     <div class="form-row">
       <div class="form-group" id="f-sector-group">
         <label class="form-label">Sector</label>
@@ -1897,15 +1962,15 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       </div>
       <div class="form-group" id="f-units-group">
         <label class="form-label" id="lbl-units">Units / Amount Held</label>
-        <input class="form-input" id="f-units" type="number" placeholder="e.g. 10" step="any" min="0" oninput="updateFundPreview()" />
+        <input class="form-input" id="f-units" type="number" placeholder="e.g. 10" step="any" min="0" oninput="updateFundPreview();updateOptPreview()" />
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label" id="lbl-entry">Avg Entry Price</label>
-        <input class="form-input" id="f-entry" type="number" placeholder="e.g. 45000" step="any" min="0" oninput="updateFundPreview();recalcPerpUnits()" />
+        <input class="form-input" id="f-entry" type="number" placeholder="e.g. 45000" step="any" min="0" oninput="updateFundPreview();recalcPerpUnits();updateOptPreview()" />
       </div>
-      <div class="form-group">
+      <div class="form-group" id="f-current-group">
         <label class="form-label" id="lbl-current">Current Price</label>
         <input class="form-input" id="f-current" type="number" placeholder="e.g. 95000" step="any" min="0" oninput="updateFundPreview()" />
       </div>
@@ -1921,7 +1986,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       </div>
     </div>
     <div id="f-tp-help" style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:-8px;margin-bottom:16px">Target = where you'd take profit. Invalidation = the price that kills your thesis — the dashboard warns you when it's crossed (below it for longs, above it for shorts).</div>
-    <div class="form-row">
+    <div class="form-row" id="f-currency-row">
       <div class="form-group">
         <label class="form-label">Price Currency</label>
         <select class="form-input" id="f-currency" onchange="updateFundPreview();recalcPerpUnits()">
@@ -2025,6 +2090,20 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="form-actions">
       <button class="btn-secondary" onclick="hideCloseModal()">Cancel</button>
       <button class="btn-primary" onclick="submitClosePosition()">Close Position</button>
+    </div>
+  </div>
+</div>
+
+<!-- OPTION DETAILS MODAL — payoff at expiry + the numbers behind an option row -->
+<div class="modal-overlay" id="optionModal" onclick="if(event.target===this)hideOptionModal()">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-header">
+      <div class="modal-title" id="optionModalTitle">Option</div>
+      <button class="modal-close" onclick="hideOptionModal()">✕</button>
+    </div>
+    <div id="optionModalBody"></div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="hideOptionModal()">Close</button>
     </div>
   </div>
 </div>
@@ -2748,7 +2827,7 @@ const SECTOR_RENAMES = {
 // The CoinGecko id a position actually prices off - KNOWN_PRICE_SOURCES wins over the
 // stored one, exactly as in fetchPrices().
 function resolvedCgId(p) {
-  if (!p || p.physical || p.skin) return null;
+  if (!p || p.physical || p.skin || p.option) return null;
   const known = KNOWN_PRICE_SOURCES[(p.ticker || '').toUpperCase()];
   return (known && known.coingeckoId) || p.coingeckoId || null;
 }
@@ -2767,7 +2846,7 @@ function sectorFromCgCategories(cats) {
 function applyCryptoSectors() {
   let changed = false;
   portfolio.forEach(p => {
-    if (p.physical || !isAutoSector(p.sector)) return;
+    if (p.physical || p.option || !isAutoSector(p.sector)) return;
     const cgId = resolvedCgId(p);
     const sector = CURATED_SECTORS[(p.ticker || '').toUpperCase()]
                 || (cgId ? cryptoSectorCache[cgId] : null);
@@ -2787,7 +2866,7 @@ const SECTOR_FETCH_GAP_MS = 6500;
 async function fetchCryptoSectors(force) {
   const ids = [];
   portfolio.forEach(p => {
-    if (p.physical || p.skin) return;
+    if (p.physical || p.skin || p.option) return;
     if (!force && !isAutoSector(p.sector)) return;
     if (CURATED_SECTORS[(p.ticker || '').toUpperCase()]) return; // curated wins, no request
     const id = resolvedCgId(p);
@@ -3150,8 +3229,97 @@ function repaintFromPalette(savedVersion) {
   });
 }
 
+// ── LOAD-TIME SANITIZER ──────────────────────────────────────────────────────
+// Everything saved passes through here before the app reads it: localStorage on every load,
+// and through that every restored backup file and every synced gist (both write storage, then
+// reload). The threat is a doctored backup file: several saved fields are placed into the page
+// unescaped - tickers inside onclick="…('TICKER')", ids unquoted in handlers, numbers in
+// value="", colours in style="", screenshots in src="" - so a crafted value in one of them could
+// run code and read the sync token. The rules:
+//   - free text (names, notes, theses, labels…) is left exactly as typed: it is always shown
+//     through escHtml() (iron rule 3)
+//   - ids must be numbers, colours must be colours, images must be real image data URLs
+//   - every other string loses < > " ' ` & \ - never part of a ticker, currency, date or code
+// An ordinary backup comes through unchanged - test-sanitize.js checks that, and the owner's
+// real backup was run through it on 2026-09-12 with zero differences.
+const SAFE_FREE_TEXT = new Set(['name', 'label', 'notes', 'thesis', 'defaultThesis', 'outcome', 'text', 'address',
+  'dashboardName', 'sector', 'marketHashName', 'exterior', 'variant', 'desc', 'title']);
+const SAFE_ID_KEYS   = new Set(['id', 'posId', 'uid', 'linkedPerpId']);
+const SAFE_SKIP_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const SAFE_BAD_CHARS = /[<>"'`&\\]/g;
+const SAFE_IMG       = /^data:image\/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+$/;
+const SAFE_COLOR     = /^(#[0-9a-fA-F]{3,8}|rgba?\(\s*[\d.]+%?\s*(,\s*[\d.]+%?\s*){2,3}\))$/;
+const SAFE_COLOR_FALLBACK = { color: '#8892a8', bg: 'rgba(136,146,168,0.1)' };
+
+// For codes typed into the app (tickers): the same characters the loader strips.
+function cleanCode(s) { return String(s ?? '').replace(SAFE_BAD_CHARS, ''); }
+
+// Fields the app does arithmetic on. A number stays a number; a numeric string becomes one;
+// anything else would crash a formatter (toFixed on a string), so it becomes 0 where the table
+// needs a value and null where the app already copes with "none".
+const SAFE_NUM_KEYS = new Set(['units', 'entryPrice', 'currentPrice', 'closePrice', 'amount', 'amountUSD', 'value', 'price',
+  'pnlUSD', 'totalPnlUsd', 'pnlPct', 'realizedPnl', 'marginUSD', 'targetPrice', 'invalidationPrice', 'float', 'strike',
+  'optIndex', 'optDelta', 'optMarkAt', 'optSettle', 'bankBalance', 'salary', 'dividend', 'expenses', 'tax', 'spent']);
+const SAFE_REQUIRED_NUM = new Set(['units', 'entryPrice', 'currentPrice', 'amount', 'value']);
+
+function sanitizeValue(v, key) {
+  if (SAFE_NUM_KEYS.has(key) && v !== null && v !== '' && typeof v !== 'number') {
+    const n = typeof v === 'string' && /^\s*-?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?\s*$/i.test(v) ? Number(v) : NaN;
+    return Number.isFinite(n) ? n : (SAFE_REQUIRED_NUM.has(key) ? 0 : null);
+  }
+  if (typeof v === 'string') {
+    if (SAFE_FREE_TEXT.has(key)) return v;
+    if (key === 'color' || key === 'bg') return SAFE_COLOR.test(v.trim()) ? v : SAFE_COLOR_FALLBACK[key];
+    if (key === 'chartImage') return SAFE_IMG.test(v) ? v : '';
+    if (SAFE_ID_KEYS.has(key)) { const n = Number(v); return Number.isFinite(n) ? n : null; }
+    return cleanCode(v);
+  }
+  if (Array.isArray(v)) {
+    if (key === 'images') return v.filter(s => typeof s === 'string' && SAFE_IMG.test(s));
+    return v.map(x => sanitizeValue(x, key));
+  }
+  if (v && typeof v === 'object') {
+    const out = {};
+    Object.keys(v).forEach(k => { if (!SAFE_SKIP_KEYS.has(k)) out[k] = sanitizeValue(v[k], k); });
+    return out;
+  }
+  if (typeof v === 'number' && SAFE_ID_KEYS.has(key) && !Number.isFinite(v)) return null;
+  return v;
+}
+
+function sanitizeSavedState(saved) {
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
+  const s = sanitizeValue(saved, '');
+  // Thesis screenshots: keyed by ticker, and only real image data - never an outside URL,
+  // which would load (and track) from someone else's server.
+  if (s.chartImages && typeof s.chartImages === 'object' && !Array.isArray(s.chartImages)) {
+    const imgs = {};
+    Object.keys(s.chartImages).forEach(t => {
+      const raw  = saved.chartImages[t];
+      const list = (Array.isArray(raw) ? raw : [raw]).filter(x => typeof x === 'string' && SAFE_IMG.test(x));
+      imgs[cleanCode(t)] = list; // an empty slot stays an empty list, as normalizeThesisImages makes it
+    });
+    s.chartImages = imgs;
+  }
+  if (s.fxRates && typeof s.fxRates === 'object') {
+    const fx = {};
+    Object.keys(s.fxRates).forEach(c => {
+      const r = s.fxRates[c];
+      if (/^[A-Z]{3}$/.test(c) && typeof r === 'number' && isFinite(r) && r > 0) fx[c] = r;
+    });
+    s.fxRates = fx;
+  }
+  if (s.cryptoSectorCache && typeof s.cryptoSectorCache === 'object') {
+    const cache = {};
+    Object.keys(s.cryptoSectorCache).forEach(k => { cache[cleanCode(k)] = s.cryptoSectorCache[k]; });
+    s.cryptoSectorCache = cache;
+  }
+  if (s.homeCurrency != null && !/^[A-Za-z]{3}$/.test(String(s.homeCurrency))) s.homeCurrency = 'USD';
+  return s;
+}
+
 function loadState() {
-  const saved = JSON.parse(localStorage.getItem('portfolio-dashboard-template') || '{}');
+  const saved = sanitizeSavedState(JSON.parse(localStorage.getItem('portfolio-dashboard-template') || '{}'));
   if (saved.portfolio && Array.isArray(saved.portfolio) && saved.portfolio.length > 0) {
     portfolio = saved.portfolio.map((p, i) => {
       const known = KNOWN_PRICE_SOURCES[p.ticker] || {};
@@ -3244,6 +3412,9 @@ function buildStateJson() {
       hasCostBasis: p.hasCostBasis || false,
       // CS skins only - other rows stay exactly as they were
       ...(p.skin ? { skin: true, exterior: p.exterior || '', variant: p.variant || '', float: p.float ?? null, marketHashName: p.marketHashName || '' } : {}),
+      // Options only - the legs, and the last numbers Derive sent (so the row reads right offline)
+      ...(p.option ? { option: true, underlying: p.underlying || '', expiry: p.expiry || '', optStrategy: p.optStrategy || '', legs: p.legs || [],
+                       optIndex: p.optIndex ?? null, optDelta: p.optDelta ?? null, optMarkAt: p.optMarkAt ?? null, optSettle: p.optSettle ?? null } : {}),
     })),
     cashPositions,
     closedTrades,
@@ -3684,7 +3855,8 @@ async function fetchFxRates() {
     const data = await res.json();
     if (data.result === 'success') {
       Object.keys(FALLBACK_RATES).forEach(c => {
-        if (c !== 'USD' && data.rates[c]) fxRates[c] = 1 / data.rates[c];
+        const r = data.rates[c];
+        if (c !== 'USD' && typeof r === 'number' && isFinite(r) && r > 0) fxRates[c] = 1 / r;
       });
       fxLastUpdated = new Date();
       fxSource = 'live';
@@ -3696,12 +3868,13 @@ async function fetchFxRates() {
 
 async function fetchPrices() {
   let updated = false;
+  const optRun = fetchOptionPrices(); // Derive, over its own socket - runs alongside the fetches below
 
   // CoinGecko — batch all crypto positions
   // KNOWN_PRICE_SOURCES takes priority over whatever coingeckoId is stored (fixes stale/wrong IDs)
   const cgMap = {};
   portfolio.forEach(p => {
-    if (p.physical || p.skin) return; // skins price off Steam (fetchSteamPrices)
+    if (p.physical || p.skin || p.option) return; // skins price off Steam, options off Derive
     const known = KNOWN_PRICE_SOURCES[p.ticker?.toUpperCase()];
     const cgId = (known?.coingeckoId) || p.coingeckoId;
     if (cgId) { p._resolvedCgId = cgId; cgMap[cgId] = true; }
@@ -3730,7 +3903,7 @@ async function fetchPrices() {
   // Binance cross-check — verify CoinGecko prices against Binance for tokens with a known USDT pair
   const bnMap = {}; // binanceTicker -> portfolio position
   portfolio.forEach(p => {
-    if (p.physical || p.skin) return;
+    if (p.physical || p.skin || p.option) return;
     const known = KNOWN_PRICE_SOURCES[p.ticker?.toUpperCase()];
     if (known?.binanceTicker) bnMap[known.binanceTicker] = p;
   });
@@ -3764,7 +3937,7 @@ async function fetchPrices() {
   }
 
   // Yahoo Finance — via CORS proxy, one call per stock
-  const yahooPositions = portfolio.filter(p => p.yahooTicker && !p.skin);
+  const yahooPositions = portfolio.filter(p => p.yahooTicker && !p.skin && !p.option);
   for (const p of yahooPositions) {
     try {
       const url   = `https://query1.finance.yahoo.com/v8/finance/chart/${p.yahooTicker}?interval=1d&range=1d`;
@@ -3786,6 +3959,7 @@ async function fetchPrices() {
     renderAllSafe(); // never rebuild the DOM out from under a field being typed in
     renderFxBar();
   }
+  await optRun; // so the first-load snapshot sees option values too
 }
 
 // fxRates stores USD per 1 unit of the currency (DKK → 0.1556), and every conversion uses it
@@ -3847,7 +4021,7 @@ function renderCashSection(data) {
             ).join('');
             const perpOptions = `<option value="">— no link —</option>` +
               leveragedPositions.map(p =>
-                `<option value="${p.posId}" ${c.linkedPerpId === p.posId ? 'selected' : ''}>${p.ticker} perp</option>`
+                `<option value="${p.posId}" ${c.linkedPerpId === p.posId ? 'selected' : ''}>${escHtml(p.ticker)} perp</option>`
               ).join('');
             return `
             <div class="cash-chip" style="gap:6px;align-items:center;flex-wrap:wrap">
@@ -3881,7 +4055,7 @@ function renderCashSection(data) {
             const pnlColor = linkedPerp && linkedPerp.pnlUsd >= 0 ? 'var(--green)' : 'var(--red)';
             return `
             <div class="cash-chip${linkedPerp ? ' cash-chip-linked' : ''}">
-              <span class="cash-chip-label">${escHtml(c.label)}${linkedPerp ? `<span style="color:var(--cyan);font-size:9px;margin-left:4px">⬡ ${linkedPerp.ticker}</span>` : ''}</span>
+              <span class="cash-chip-label">${escHtml(c.label)}${linkedPerp ? `<span style="color:var(--cyan);font-size:9px;margin-left:4px">⬡ ${escHtml(linkedPerp.ticker)}</span>` : ''}</span>
               <span class="cash-chip-amount" style="${linkedPerp ? 'color:var(--text)' : ''}">${native}</span>
               ${linkedPerp ? `<span style="font-family:var(--mono);font-size:10px;color:${pnlColor}">${linkedPerp.pnlUsd >= 0 ? '+' : ''}${fmtUsd(linkedPerp.pnlUsd)}</span>` : ''}
               ${!linkedPerp && c.currency.toUpperCase() !== 'USD' ? `<span class="cash-chip-usd">≈ ${fmtUsd(usd)}</span>` : ''}
@@ -4034,7 +4208,7 @@ function dirSign(p) {
 // units held cost; `lockedUsd` is what is left over even if the price goes to zero.
 function breakEvenInfo(p) {
   const realized = p.realizedPnl || 0;
-  if (p.physical || !realized || !(p.units > 0) || !(p.entryPrice > 0)) return null;
+  if (p.physical || p.option || !realized || !(p.units > 0) || !(p.entryPrice > 0)) return null;
   const rate  = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
   const dir   = dirSign(p);
   const price = p.entryPrice - dir * realized / (p.units * rate);
@@ -4160,7 +4334,7 @@ function renderSummary(data) {
     </div>
     <div class="card accent-green">
       <div class="card-label">Best Performer</div>
-      <div class="card-value green" style="font-size:18px">${best ? best.ticker : '—'}</div>
+      <div class="card-value green" style="font-size:18px">${best ? escHtml(best.ticker) : '—'}</div>
       <div class="card-sub green">${best ? fmtPct(best.pnlPct) : ''}</div>
     </div>
   `;
@@ -4199,10 +4373,10 @@ function renderTable(data) {
       <td>
         <div class="asset-cell">
           <div class="asset-dot" style="background:${p.bg};color:${p.color};${editMode ? 'cursor:pointer;outline:2px solid rgba(255,255,255,0.15);outline-offset:1px' : ''}"
-            ${editMode ? `onclick="cycleColor(${p.posId})" title="Click to change color"` : ''}>${p.ticker.slice(0,4)}</div>
+            ${editMode ? `onclick="cycleColor(${p.posId})" title="Click to change color"` : ''}>${escHtml(p.ticker.slice(0,4))}</div>
           <div>
             <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}">${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}</span>` : ''}${invalidationBreached(p) ? `<span style="color:var(--red);margin-left:5px;cursor:help" title="Invalidation level crossed (${fmtNative(p.invalidationPrice, p.currency)}) — check your thesis">⚠</span>` : ''}</div>
-            <div class="asset-ticker">${escHtml(p.skin ? (csSkinDetail(p) || p.ticker) : p.ticker)}</div>
+            <div class="asset-ticker">${escHtml(p.skin ? (csSkinDetail(p) || p.ticker) : p.option ? optionDetail(p) : p.ticker)}</div>
           </div>
         </div>
       </td>
@@ -4216,7 +4390,7 @@ function renderTable(data) {
             ${editMode ? '' : 'readonly tabindex="-1"'}
             onblur="updateEntryPrice(${p.posId}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
-          />${p.currency && p.currency !== 'USD' ? `<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${p.currency}</span>` : ''}
+          />${p.currency && p.currency !== 'USD' ? `<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${escHtml(p.currency)}</span>` : ''}
         </div>
       </td>
       <td class="right">
@@ -4226,7 +4400,7 @@ function renderTable(data) {
             ${editMode ? '' : 'readonly tabindex="-1"'}
             onblur="updatePrice(${p.posId}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
-          />${p.currency && p.currency !== 'USD' ? `<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${p.currency}</span>` : ''}
+          />${p.currency && p.currency !== 'USD' ? `<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${escHtml(p.currency)}</span>` : ''}
         </div>
       </td>
       <td class="right">
@@ -4266,6 +4440,7 @@ function renderTable(data) {
           <span class="pnl-usd ${p.totalPnlUsd >= 0 ? 'pos' : 'neg'}">${fmtUsd(p.totalPnlUsd)}</span>
           ${(!p.physical || p.realizedPnl) ? `<span class="realized-sub" onclick="editRealized(${p.posId})" title="Click for trade log & realized P&L">${p.realizedPnl ? `incl. ${fmtUsd(p.realizedPnl)} realized` : 'trade log'}</span>` : ''}
           ${breakEvenSub(p)}
+          ${optionSub(p)}
         </div>
       </td>
       <td class="right">
@@ -4347,11 +4522,12 @@ function showCloseModal(posId) {
   if (!p) return;
   _closingPosId = posId;
   // A skin's ticker is only a made-up row code - selling one reads better by its name.
-  document.getElementById('closeModalTitle').textContent = p.skin ? `Sell ${p.name}` : `Close ${p.ticker}`;
+  document.getElementById('closeModalTitle').textContent = p.skin ? `Sell ${p.name}` : p.option ? `Close ${p.name}` : `Close ${p.ticker}`;
   document.getElementById('closeModalDesc').innerHTML =
-    `<strong>${p.skin ? `${p.units} × ${escHtml(p.name)}` : `${fmtUnits(p.units)} ${p.ticker}`}</strong> · ${p.skin ? 'paid' : 'entry'} ${fmtNative(p.entryPrice, p.currency)}` +
-    (p.realizedPnl ? ` · +${fmtUsd(p.realizedPnl)} already realized` : '');
-  document.getElementById('closePrice').value = p.currentPrice.toFixed(p.currentPrice >= 1 ? 2 : 4);
+    `<strong>${p.skin ? `${p.units} × ${escHtml(p.name)}` : p.option ? escHtml(optionCount(p)) : `${fmtUnits(p.units)} ${escHtml(p.ticker)}`}</strong> · ${p.skin || p.option ? 'paid' : 'entry'} ${fmtNative(p.entryPrice, p.currency)}${p.option ? ' each' : ''}` +
+    (p.realizedPnl ? ` · +${fmtUsd(p.realizedPnl)} already realized` : '') +
+    (p.option ? `<br><span style="font-size:12px;color:var(--text3)">Close price = what one ${optionUnitWord(p)} is worth now${p.optSettle ? ` (settled at ${fmtOptUsd(p.optSettle)})` : ''}. Expired worthless = 0.</span>` : '');
+  document.getElementById('closePrice').value = p.currentPrice.toFixed(p.currentPrice >= 1 || p.option ? 2 : 4);
   document.getElementById('closeOutcome').value = '';
   document.getElementById('closeError').textContent = '';
   const currEl = document.getElementById('closePriceCurrency');
@@ -4363,7 +4539,8 @@ function showCloseModal(posId) {
 
 function updateClosePnlPreview(p) {
   const rate     = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
-  const closeVal = parseFloat(document.getElementById('closePrice').value) || p.currentPrice;
+  const typed    = parseFloat(document.getElementById('closePrice').value);
+  const closeVal = isNaN(typed) ? p.currentPrice : typed; // 0 is a real close price (an option that expired worthless)
   const pnlOnRemaining = dirSign(p) * p.units * (closeVal - p.entryPrice) * rate;
   const total    = pnlOnRemaining + (p.realizedPnl || 0);
   const el       = document.getElementById('closePnlPreview');
@@ -4380,7 +4557,8 @@ function submitClosePosition() {
   const p = portfolio.find(p => p.posId === _closingPosId);
   if (!p) return;
   const closePriceVal = parseFloat(document.getElementById('closePrice').value);
-  if (isNaN(closePriceVal) || closePriceVal <= 0) {
+  // An option can close at 0 - expired worthless. Nothing else can.
+  if (isNaN(closePriceVal) || closePriceVal < 0 || (closePriceVal === 0 && !p.option)) {
     document.getElementById('closeError').textContent = 'Enter a valid close price.';
     return;
   }
@@ -4416,6 +4594,7 @@ function submitClosePosition() {
     outcome:    document.getElementById('closeOutcome').value.trim() || null,
     thesis:     (p.thesis || '').trim() || null,
     tradeLog:   closedLog,
+    ...(p.option ? { option: true, underlying: p.underlying, expiry: p.expiry, legs: p.legs } : {}),
   });
 
   // Unlink any cash tied to this perp — otherwise the chip keeps a dead linkedPerpId,
@@ -4803,7 +4982,7 @@ function submitPastTradeEntry() {
     openedDate = openedDate || null;
   }
 
-  const ticker = (val('pt-ticker') || derivePastTradeTicker(name)).toUpperCase();
+  const ticker = cleanCode((val('pt-ticker') || derivePastTradeTicker(name)).toUpperCase());
   const pos    = portfolio.find(p => p.ticker === ticker) || closedTrades.find(t => t.ticker === ticker);
   const { color, bg } = pos ? { color: pos.color, bg: pos.bg } : nextColorFor(ticker);
 
@@ -4945,7 +5124,7 @@ function renderClosedTrades() {
         <tr>
           <td>
             <div style="display:flex;align-items:center;gap:8px">
-              <div style="width:26px;height:26px;border-radius:6px;background:${t.bg};color:${t.color};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">${t.ticker.slice(0,4)}</div>
+              <div style="width:26px;height:26px;border-radius:6px;background:${t.bg};color:${t.color};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">${escHtml(t.ticker.slice(0,4))}</div>
               <div>
                 <div style="font-weight:600;font-size:12px;color:var(--text)">${escHtml(t.name)}${t.direction ? `<span class="lev-badge${t.direction === 'short' ? ' short' : ''}" style="font-size:8px">${t.direction.toUpperCase()}</span>` : ''}</div>
                 <div style="font-size:10px;color:var(--text3)">${escHtml(t.ticker)}</div>
@@ -5472,7 +5651,9 @@ function updateFundPreview() {
   if (!c) { preview.textContent = ''; return; }
   // Physical assets have no units field — the money tied up is the current value.
   const units  = _addMode === 'physical' ? 1 : parseFloat(document.getElementById('f-units').value);
-  const entry  = _addMode === 'physical' ? parseFloat(document.getElementById('f-current').value) : parseFloat(document.getElementById('f-entry').value);
+  const rawEntry = _addMode === 'physical' ? parseFloat(document.getElementById('f-current').value) : parseFloat(document.getElementById('f-entry').value);
+  // An option's "what you paid" can be the total for the whole position - spread it per unit here.
+  const entry  = (_addMode === 'option' && _optPaidMode === 'total') ? rawEntry / units : rawEntry;
   const cur    = document.getElementById('f-currency').value || 'USD';
   if (!isNaN(units) && !isNaN(entry) && units > 0 && entry > 0) {
     const costUSD     = units * entry * (fxRates[cur.toUpperCase()] ?? 1);
@@ -5542,17 +5723,18 @@ function recalcPerpUnits() {
 
 function showAddModal(mode) {
   _editPosId = null;
-  _addMode = ['perp', 'physical', 'skin'].includes(mode) ? mode : 'spot';
+  _addMode = ['perp', 'physical', 'skin', 'option'].includes(mode) ? mode : 'spot';
   const perp     = _addMode === 'perp';
   const physical = _addMode === 'physical';
   const skin     = _addMode === 'skin';
-  document.getElementById('addModalTitle').textContent    = physical ? 'Add Physical Asset' : perp ? 'Add Leverage Position' : skin ? 'Add CS Skin' : 'Add Asset';
-  document.getElementById('addModalSubmitBtn').textContent = physical ? 'Add Asset'          : perp ? 'Add Position'         : skin ? 'Add Skin'    : 'Add Asset';
+  const option   = _addMode === 'option';
+  document.getElementById('addModalTitle').textContent    = physical ? 'Add Physical Asset' : perp ? 'Add Leverage Position' : skin ? 'Add CS Skin' : option ? 'Add Option' : 'Add Asset';
+  document.getElementById('addModalSubmitBtn').textContent = physical ? 'Add Asset'          : perp ? 'Add Position'         : skin ? 'Add Skin'    : option ? 'Add Option' : 'Add Asset';
   document.getElementById('leverage-fields').style.display   = perp ? 'block' : 'none';
   document.getElementById('fund-from-cash-row').style.display = perp ? 'none' : 'block';
   // Physical assets have no ticker, units, live price, targets, price-source IDs or thesis.
   // Skins have units (quantity) and a live price, but from Steam - not a ticker or an ID.
-  const hideNoTicker = physical || skin ? 'none' : '';
+  const hideNoTicker = physical || skin || option ? 'none' : '';
   document.getElementById('f-ticker-group').style.display     = hideNoTicker;
   document.getElementById('f-units-group').style.display      = physical ? 'none' : '';
   document.getElementById('f-tp-row').style.display           = hideNoTicker;
@@ -5560,8 +5742,13 @@ function showAddModal(mode) {
   document.getElementById('f-ids-row').style.display          = hideNoTicker;
   document.getElementById('f-thesis-group').style.display     = hideNoTicker;
   document.getElementById('f-thesisboard-group').style.display = hideNoTicker;
-  document.getElementById('f-sector-group').style.display     = skin ? 'none' : ''; // always "CS Skins"
+  document.getElementById('f-sector-group').style.display     = skin || option ? 'none' : ''; // "CS Skins" / the underlying's sector
   document.getElementById('f-skin-fields').style.display      = skin ? '' : 'none';
+  document.getElementById('f-option-fields').style.display    = option ? '' : 'none';
+  // An option's name, price and currency all come from Derive: USD, named after its legs.
+  document.getElementById('f-name-group').style.display       = option ? 'none' : '';
+  document.getElementById('f-current-group').style.display    = option ? 'none' : '';
+  document.getElementById('f-currency-row').style.display     = option ? 'none' : '';
   // Relabel the fields for physical assets and skins.
   const hint = t => ` <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">${t}</span>`;
   document.getElementById('lbl-entry').innerHTML   = physical ? 'Purchase Price' + hint('optional — for gain/loss')
@@ -5575,7 +5762,7 @@ function showAddModal(mode) {
   secSel.value = '';
   document.getElementById('f-sector').style.display = 'none';
   document.getElementById('f-sector').placeholder  = physical ? 'e.g. Vehicle, Real Estate' : 'e.g. Crypto, Technology';
-  document.getElementById('f-entry').placeholder   = physical || skin ? 'what you paid' : 'e.g. 45000';
+  document.getElementById('f-entry').placeholder   = physical || skin || option ? 'what you paid' : 'e.g. 45000';
   document.getElementById('f-current').placeholder = physical ? 'e.g. 50000' : skin ? 'auto' : 'e.g. 95000';
   if (skin) {
     document.getElementById('f-units').value    = '1';
@@ -5584,6 +5771,18 @@ function showAddModal(mode) {
     document.getElementById('f-float').value    = '';
     document.getElementById('f-steam').value    = '';
     _csMainSteamTouched = false;
+  }
+  if (option) {
+    const us = document.getElementById('f-opt-underlying'); if (!us.value) us.value = 'SOL';
+    const ss = document.getElementById('f-opt-strategy');   if (!OPTION_STRATEGIES[ss.value]) ss.value = 'bullCall';
+    document.getElementById('f-units').value    = '';
+    document.getElementById('f-currency').value = 'USD';
+    _optStrikesTouched = false;
+    setOptPaidMode('total');
+    onOptStrategyChange(true); // labels only - the chain load below fills the strikes
+    onOptUnderlyingChange();
+  } else {
+    _optLoadSeq++; // drop any Derive answer still on its way for an earlier option form
   }
   setAddDirection('long');
   document.getElementById('addModal').classList.add('open');
@@ -5621,6 +5820,8 @@ function hideAddModal() {
   _addMode = 'spot';
   _addDirection = 'long';
   _editPosId = null;
+  _optLoadSeq++;
+  document.getElementById('f-opt-status').innerHTML = '';
 }
 
 // Build a short, unique ticker/code from a physical asset's name (used for the row dot + chart grouping).
@@ -5717,6 +5918,556 @@ function submitSkinAsset() {
   fetchSteamPrices();
 }
 
+// ── OPTIONS (Derive.xyz) ─────────────────────────────────────
+// An option row is an ordinary non-leveraged position plus `option: true` - the skin trick
+// again, so compute() needs nothing new: units = number of spreads (1 Derive contract = 1 coin),
+// entryPrice = net paid per spread, currentPrice = net mark per spread. Each leg keeps Derive's
+// own instrument name, because Derive spells decimal strikes with an underscore
+// (XRP-20261225-0_9-C) and a name built here would miss those.
+//
+// Prices come over Derive's public WebSocket. Its REST API only answers pages on derive.xyz
+// (CORS); the socket answers any page, so no proxy sits between the dashboard and Derive.
+// Security: only the read-only public methods in DERIVE_READ_METHODS can be sent - no login, no
+// keys, no signing - and everything that comes back is parsed as a number and range-checked,
+// or matched against a strict name pattern, before it is stored or shown.
+const DERIVE_WS_URL          = 'wss://api.lyra.finance/ws';
+const DERIVE_TIMEOUT_MS      = 12000;
+const DERIVE_READ_METHODS    = new Set(['public/get_instruments', 'public/get_tickers', 'public/get_option_settlement_prices']);
+const DERIVE_EXPIRY_HOUR_UTC = 8; // Derive options expire at 08:00 UTC on the expiry date
+// All four are bought for a debit, so a position is never worth less than zero.
+const OPTION_STRATEGIES = {
+  bullCall: { label: 'Call spread', type: 'C', spread: true },  // buy the lower call, sell the higher
+  bearPut:  { label: 'Put spread',  type: 'P', spread: true },  // buy the higher put, sell the lower
+  longCall: { label: 'Call',        type: 'C', spread: false },
+  longPut:  { label: 'Put',         type: 'P', spread: false },
+};
+
+// A number Derive sent (most arrive as strings), or null unless finite and >= 0.
+function deriveNum(v) {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : NaN;
+  return isFinite(n) && n >= 0 ? n : null;
+}
+
+// 'SOL-20261225-150-C' -> { inst, underlying, expiry, strike, type }, or null. The strict
+// pattern is what makes an instrument name safe to store and to put in the page.
+function parseOptInst(name) {
+  const m = /^([A-Z0-9]{1,10})-(\d{8})-(\d{1,9}(?:_\d{1,9})?)-([CP])$/.exec(typeof name === 'string' ? name : '');
+  return m ? { inst: m[0], underlying: m[1], expiry: m[2], strike: parseFloat(m[3].replace('_', '.')), type: m[4] } : null;
+}
+
+// Send a batch of read-only requests over one short-lived socket. Resolves with
+// { key: result } once every answer is in or the timeout passes - never rejects, so a caller
+// only has to cope with "no data" (offline, Derive down), which means keeping the last price.
+function deriveRequest(calls) {
+  return new Promise(resolve => {
+    const out  = {};
+    const safe = (calls || []).filter(c => c && DERIVE_READ_METHODS.has(c.method));
+    if (typeof WebSocket === 'undefined' || !safe.length) { resolve(out); return; }
+    let ws = null, done = false, left = safe.length;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { if (ws) ws.close(); } catch (_) {}
+      resolve(out);
+    };
+    const timer = setTimeout(finish, DERIVE_TIMEOUT_MS);
+    try { ws = new WebSocket(DERIVE_WS_URL); } catch (_) { finish(); return; }
+    ws.onopen = () => safe.forEach((c, i) => ws.send(JSON.stringify({ id: i + 1, method: c.method, params: c.params || {} })));
+    ws.onmessage = e => {
+      let msg = null;
+      try { msg = JSON.parse(e.data); } catch (_) { return; }
+      const i = msg && Number.isInteger(msg.id) ? msg.id - 1 : -1;
+      if (i < 0 || i >= safe.length || (safe[i].key in out)) return;
+      out[safe[i].key] = (msg.result && typeof msg.result === 'object') ? msg.result : null;
+      if (--left <= 0) finish();
+    };
+    ws.onerror = finish;
+    ws.onclose = finish;
+  });
+}
+
+function optionIntrinsic(leg, S) { return leg.type === 'P' ? Math.max(0, leg.strike - S) : Math.max(0, S - leg.strike); }
+function optionPayoff(legs, S)   { return (legs || []).reduce((s, l) => s + l.side * optionIntrinsic(l, S), 0); }
+
+// Everything that follows from the legs and what was paid, per spread: the most it can be worth
+// at expiry, max profit / max loss and the break-even price(s). The payoff is piecewise-linear
+// with kinks only at strikes, so checking 0, each strike and the slope past the top strike is
+// exact - no sampling. null for a row without legs.
+function optionStats(p) {
+  const legs = (p && p.legs) || [];
+  if (!legs.length) return null;
+  const strikes = [...new Set(legs.map(l => l.strike))].sort((a, b) => a - b);
+  const pts   = [0, ...strikes];
+  const top   = strikes[strikes.length - 1];
+  const slope = optionPayoff(legs, top + 1) - optionPayoff(legs, top); // payoff per $1 above the top strike
+  const vals  = pts.map(S => optionPayoff(legs, S));
+  const debit = p.entryPrice > 0 ? p.entryPrice : 0;
+  const maxValue = slope > 1e-9 ? Infinity : Math.max(...vals);
+  const minValue = slope < -1e-9 ? -Infinity : Math.min(...vals);
+  const f = S => optionPayoff(legs, S) - debit;
+  const breakevens = [];
+  pts.forEach((a, i) => {
+    const fa = f(a);
+    if (Math.abs(fa) < 1e-9) { if (a > 0) breakevens.push(a); return; }
+    const b = pts[i + 1];
+    if (b !== undefined) { const fb = f(b); if (fa * fb < 0) breakevens.push(a + (b - a) * fa / (fa - fb)); }
+  });
+  if (Math.abs(slope) > 1e-9) { const x = top - f(top) / slope; if (x > top + 1e-9) breakevens.push(x); }
+  return { strikes, maxValue, maxProfit: maxValue - debit, maxLoss: debit - minValue, breakevens, debit };
+}
+
+function optionExpiryMs(expiry) {
+  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(expiry || '');
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], DERIVE_EXPIRY_HOUR_UTC) : NaN;
+}
+function fmtOptExpiry(expiry) {
+  const ms = optionExpiryMs(expiry);
+  if (!isFinite(ms)) return '—';
+  const d = new Date(ms);
+  return `${d.getUTCDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+function optionExpired(p, now = Date.now()) { const ms = optionExpiryMs(p.expiry); return isFinite(ms) && now >= ms; }
+function optionDaysLeft(p, now = Date.now()) {
+  const ms = optionExpiryMs(p.expiry);
+  return isFinite(ms) ? Math.max(0, Math.ceil((ms - now) / 86400000)) : null;
+}
+const fmtStrike = k => String(Number(Number(k).toFixed(6)));
+// Option premiums: cents above $1, two significant digits below it (an XRP option can cost $0.012).
+function fmtOptUsd(v) {
+  if (!(typeof v === 'number' && isFinite(v))) return '—';
+  const a = Math.abs(v);
+  const s = a >= 1000 ? a.toLocaleString('en-US', { maximumFractionDigits: 0 }) : a >= 1 || a === 0 ? a.toFixed(2) : String(Number(a.toPrecision(2)));
+  return (v < 0 ? '-$' : '$') + s;
+}
+function optionUnitWord(p) { return (OPTION_STRATEGIES[p.optStrategy] || {}).spread === false ? 'contract' : 'spread'; }
+function optionCount(p) {
+  if (privacyMode) return `••• ${optionUnitWord(p)}s`;
+  const n = Number((+p.units).toFixed(4));
+  return `${n} ${optionUnitWord(p)}${n === 1 ? '' : 's'}`;
+}
+
+// "SOL 150/200 Call spread" - the legs say what it is, so the name is built, not typed.
+function optionName(underlying, strategy, legs) {
+  const s = OPTION_STRATEGIES[strategy] || { label: 'Option' };
+  const buy = legs.find(l => l.side > 0), sell = legs.find(l => l.side < 0);
+  return `${underlying} ${fmtStrike(buy.strike)}${sell ? '/' + fmtStrike(sell.strike) : ''} ${s.label}`;
+}
+// Row code for the dot, the donut and Closed Trades ("SOL 150/200C"). Never a real ticker - and
+// every ticker-keyed price path skips option rows anyway.
+function deriveOptionTicker(underlying, legs, exceptPosId) {
+  const buy = legs.find(l => l.side > 0), sell = legs.find(l => l.side < 0);
+  const base = `${underlying} ${fmtStrike(buy.strike)}${sell ? '/' + fmtStrike(sell.strike) : ''}${buy.type}`;
+  let t = base, n = 2;
+  while (portfolio.some(p => p.ticker === t && p.posId !== exceptPosId)) t = `${base} #${n++}`;
+  return t;
+}
+// Groups with the coin in the by-sector donut - a SOL spread is SOL exposure.
+function optionSector(underlying) { return CURATED_SECTORS[underlying] || 'Options'; }
+function validOptionLegs(legs) {
+  return Array.isArray(legs) && legs.length > 0 && legs.every(l => l && parseOptInst(l.inst) && (l.side === 1 || l.side === -1) && l.strike > 0);
+}
+
+// The line under the name in the holdings table.
+function optionDetail(p) {
+  if (optionExpired(p)) return p.optSettle ? `Expired ${fmtOptExpiry(p.expiry)} · settled at ${fmtOptUsd(p.optSettle)}`
+                                           : `Expired ${fmtOptExpiry(p.expiry)} · waiting for Derive's settlement price`;
+  const d = optionDaysLeft(p);
+  return `Expires ${fmtOptExpiry(p.expiry)} · ${d} day${d === 1 ? '' : 's'} left`;
+}
+// Link under the P&L $ cell to the payoff chart, carrying the break-even at expiry.
+function optionSub(p) {
+  if (!p.option) return '';
+  const st = optionStats(p);
+  const be = st && st.breakevens.length ? st.breakevens.map(fmtOptUsd).join(' / ') : null;
+  return `<span class="realized-sub" onclick="showOptionModal(${Number(p.posId)})" title="Payoff at expiry, max profit and loss, break-even">payoff${be ? ` · break-even ${be}` : ''}</span>`;
+}
+
+// One pass over every option row: live marks for open ones (one get_tickers call per underlying
+// + expiry returns every strike), Derive's settlement price for expired ones. Runs on load and on
+// the 60s tick through fetchPrices. A leg Derive did not price leaves the row at its last value.
+// A call made while a round is running asks it to go once more (an option added mid-round would
+// otherwise wait for the next tick), and resolves when that has happened - same as the Steam fetcher.
+let _optRun = null, _optAgain = false;
+function fetchOptionPrices() {
+  if (_optRun) { _optAgain = true; return _optRun; }
+  _optRun = (async () => {
+    do {
+      _optAgain = false;
+      try { await optionPriceRound(); } catch (e) { console.warn('Derive option prices failed:', e); }
+    } while (_optAgain);
+  })().finally(() => { _optRun = null; });
+  return _optRun;
+}
+async function optionPriceRound() {
+  const rows = portfolio.filter(p => p.option && validOptionLegs(p.legs));
+  if (!rows.length) return;
+  const now = Date.now(), calls = [], seen = new Set();
+  rows.forEach(p => {
+    const key = optionExpired(p, now) ? (p.optSettle ? null : 's:' + p.underlying) : 't:' + p.underlying + ':' + p.expiry;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    calls.push(key.startsWith('s:')
+      ? { key, method: 'public/get_option_settlement_prices', params: { currency: p.underlying } }
+      : { key, method: 'public/get_tickers', params: { instrument_type: 'option', currency: p.underlying, expiry_date: p.expiry } });
+  });
+  if (!calls.length) return;
+  const res = await deriveRequest(calls);
+  let updated = false;
+  rows.forEach(p => {
+    if (optionExpired(p, now)) {
+      if (p.optSettle) return;
+      const r      = res['s:' + p.underlying];
+      const hit    = r && Array.isArray(r.expiries) ? r.expiries.find(e => e && e.expiry_date === p.expiry) : null;
+      const settle = hit ? deriveNum(hit.price) : null;
+      if (!settle) return; // Derive has not published it yet - try again next tick
+      p.optSettle    = settle;
+      p.optIndex     = settle;
+      p.optDelta     = 0;
+      p.currentPrice = Math.max(0, optionPayoff(p.legs, settle));
+      updated = true;
+      return;
+    }
+    const r  = res['t:' + p.underlying + ':' + p.expiry];
+    const tk = r && r.tickers && typeof r.tickers === 'object' ? r.tickers : null;
+    if (!tk) return;
+    let value = 0, delta = 0, index = null;
+    for (const l of p.legs) {
+      const t    = Object.prototype.hasOwnProperty.call(tk, l.inst) ? tk[l.inst] : null;
+      const mark = t ? deriveNum(t.M) : null;
+      if (mark == null) return; // a leg without a price: keep the last value
+      value += l.side * mark;
+      const d = t.option_pricing ? parseFloat(t.option_pricing.d) : NaN;
+      if (isFinite(d) && Math.abs(d) <= 1) delta += l.side * d;
+      const idx = deriveNum(t.I);
+      if (idx) index = idx;
+    }
+    const st = optionStats(p);
+    p.currentPrice = Math.min(Math.max(0, value), st && isFinite(st.maxValue) ? st.maxValue : Infinity);
+    p.optDelta  = delta;
+    p.optIndex  = index;
+    p.optMarkAt = now;
+    updated = true;
+  });
+  if (updated) { pricesLastUpdated = new Date(); saveState(); renderAllSafe(); }
+}
+
+// ── the add / edit form ──
+let _optChain = {};             // underlying -> { at, expiries: { YYYYMMDD: [{ inst, strike, type }] } }
+let _optTickers = {};           // 'SOL:20261225' -> Derive tickers for that expiry (form preview only)
+let _optPaidMode = 'total';     // what the paid field means: 'total' | 'each'
+let _optLoadSeq = 0;            // bumps on every load, so a slow answer for an old choice is dropped
+let _optStrikesTouched = false; // the owner picked strikes - stop suggesting at-the-money ones
+const OPT_CHAIN_TTL_MS = 10 * 60000;
+
+async function loadOptionChain(u) {
+  const c = _optChain[u];
+  if (c && Date.now() - c.at < OPT_CHAIN_TTL_MS) return c;
+  const res  = await deriveRequest([{ key: 'i', method: 'public/get_instruments', params: { currency: u, instrument_type: 'option', expired: false } }]);
+  const list = Array.isArray(res.i) ? res.i : null;
+  if (!list) return null;
+  const expiries = {};
+  list.forEach(i => {
+    const o = parseOptInst(i && i.instrument_name);
+    if (!o || o.underlying !== u || !(o.strike > 0)) return;
+    (expiries[o.expiry] = expiries[o.expiry] || []).push({ inst: o.inst, strike: o.strike, type: o.type });
+  });
+  Object.values(expiries).forEach(a => a.sort((x, y) => x.strike - y.strike));
+  return (_optChain[u] = { at: Date.now(), expiries });
+}
+async function loadOptionTickers(u, expiry) {
+  const res = await deriveRequest([{ key: 't', method: 'public/get_tickers', params: { instrument_type: 'option', currency: u, expiry_date: expiry } }]);
+  const tk  = res.t && res.t.tickers && typeof res.t.tickers === 'object' ? res.t.tickers : null;
+  if (tk) _optTickers[u + ':' + expiry] = tk;
+  return tk;
+}
+
+function setOptStatus(html) { document.getElementById('f-opt-status').innerHTML = html; }
+const optStrikeText = inst => { const o = parseOptInst(inst); return o ? fmtStrike(o.strike) : ''; };
+// items: [{ value, text }] - values are strict instrument names or 8-digit dates, escaped anyway.
+function fillOptSelect(id, items, selected) {
+  const el = document.getElementById(id);
+  el.innerHTML = items.map(o => `<option value="${escHtml(o.value)}">${escHtml(o.text)}</option>`).join('');
+  el.value = (selected != null && items.some(o => o.value === selected)) ? selected : (items.length ? items[0].value : '');
+}
+
+// keep = { expiry, buy, sell } when editing: those stay selected (and selectable offline).
+async function onOptUnderlyingChange(keep) {
+  if (_addMode !== 'option') return;
+  const u   = document.getElementById('f-opt-underlying').value;
+  const seq = ++_optLoadSeq;
+  if (!keep) _optStrikesTouched = false;
+  fillOptSelect('f-opt-expiry', keep && keep.expiry ? [{ value: keep.expiry, text: fmtOptExpiry(keep.expiry) }] : [], keep && keep.expiry);
+  fillOptSelect('f-opt-buy',  keep && keep.buy  ? [{ value: keep.buy,  text: optStrikeText(keep.buy) }]  : [], keep && keep.buy);
+  fillOptSelect('f-opt-sell', keep && keep.sell ? [{ value: keep.sell, text: optStrikeText(keep.sell) }] : [], keep && keep.sell);
+  setOptStatus('Loading contracts from Derive…');
+  const chain = await loadOptionChain(u);
+  if (seq !== _optLoadSeq) return;
+  if (!chain) {
+    setOptStatus(`<span style="color:var(--red)">Couldn't reach Derive — check your connection, then pick the underlying again.</span>`);
+    return;
+  }
+  const exps = Object.keys(chain.expiries).sort();
+  if (keep && keep.expiry && !exps.includes(keep.expiry)) exps.unshift(keep.expiry); // expired / delisted, being edited
+  fillOptSelect('f-opt-expiry', exps.map(e => ({ value: e, text: fmtOptExpiry(e) })), keep ? keep.expiry : null);
+  await onOptExpiryChange(keep, seq);
+}
+
+async function onOptExpiryChange(keep, seqIn) {
+  if (_addMode !== 'option') return;
+  const u   = document.getElementById('f-opt-underlying').value;
+  const exp = document.getElementById('f-opt-expiry').value;
+  const seq = seqIn || ++_optLoadSeq;
+  const s   = OPTION_STRATEGIES[document.getElementById('f-opt-strategy').value] || OPTION_STRATEGIES.bullCall;
+  const chain = _optChain[u];
+  const list  = ((chain && chain.expiries[exp]) || []).filter(o => o.type === s.type);
+  const items = list.map(o => ({ value: o.inst, text: fmtStrike(o.strike) }));
+  const withKept = inst => (inst && !items.some(o => o.value === inst)) ? [{ value: inst, text: optStrikeText(inst) }, ...items] : items;
+  fillOptSelect('f-opt-buy',  withKept(keep && keep.buy),  keep && keep.buy);
+  fillOptSelect('f-opt-sell', withKept(keep && keep.sell), keep && keep.sell);
+  updateOptPreview();
+  if (!/^\d{8}$/.test(exp)) return;
+  const tk = await loadOptionTickers(u, exp);
+  if (seq !== _optLoadSeq) return;
+  if (tk && !keep && !_optStrikesTouched) pickDefaultStrikes(list, tk, s);
+  updateOptPreview();
+}
+
+// Until the owner picks strikes: buy at the money, sell the next strike out.
+function pickDefaultStrikes(list, tk, s) {
+  let index = null;
+  for (const o of list) { const t = tk[o.inst]; const i = t ? deriveNum(t.I) : null; if (i) { index = i; break; } }
+  if (!index || !list.length) return;
+  let k = 0;
+  list.forEach((o, i) => { if (Math.abs(o.strike - index) < Math.abs(list[k].strike - index)) k = i; });
+  document.getElementById('f-opt-buy').value = list[k].inst;
+  const j = s.type === 'C' ? k + 1 : k - 1;
+  if (s.spread && list[j]) document.getElementById('f-opt-sell').value = list[j].inst;
+}
+
+function onOptStrategyChange(labelsOnly) {
+  const s    = OPTION_STRATEGIES[document.getElementById('f-opt-strategy').value] || OPTION_STRATEGIES.bullCall;
+  const word = s.spread ? 'spread' : 'contract';
+  document.getElementById('f-opt-sell-group').style.display = s.spread ? '' : 'none';
+  document.getElementById('lbl-opt-buy').textContent   = !s.spread ? 'Strike' : s.type === 'C' ? 'Buy strike (lower)' : 'Buy strike (higher)';
+  document.getElementById('lbl-opt-sell').textContent  = s.type === 'C' ? 'Sell strike (higher)' : 'Sell strike (lower)';
+  document.getElementById('lbl-units').textContent     = s.spread ? 'Number of spreads' : 'Number of contracts';
+  document.getElementById('opt-paid-each').textContent = `Per ${word}`;
+  document.getElementById('lbl-entry').textContent     = _optPaidMode === 'total' ? 'Total Paid (USD)' : `Paid per ${word} (USD)`;
+  if (!labelsOnly) { _optStrikesTouched = false; onOptExpiryChange(); }
+}
+
+function setOptPaidMode(mode) {
+  _optPaidMode = mode === 'each' ? 'each' : 'total';
+  document.getElementById('opt-paid-total').classList.toggle('active', _optPaidMode === 'total');
+  document.getElementById('opt-paid-each').classList.toggle('active', _optPaidMode === 'each');
+  const word = optionUnitWord({ optStrategy: document.getElementById('f-opt-strategy').value });
+  document.getElementById('lbl-entry').textContent = _optPaidMode === 'total' ? 'Total Paid (USD)' : `Paid per ${word} (USD)`;
+  updateOptPreview();
+  updateFundPreview();
+}
+
+// The legs the form describes, checked, plus today's value from the prices the form fetched
+// (mark/marks null until they are in). Shared by the live preview and the submit path.
+function optFormLegs() {
+  const v = id => document.getElementById(id).value;
+  const u = v('f-opt-underlying'), exp = v('f-opt-expiry'), strategy = v('f-opt-strategy');
+  const s = OPTION_STRATEGIES[strategy];
+  if (!s) return { error: 'Pick a strategy.' };
+  if (!/^\d{8}$/.test(exp)) return { error: 'Pick an expiry — the list comes from Derive.' };
+  const buy  = parseOptInst(v('f-opt-buy'));
+  const sell = s.spread ? parseOptInst(v('f-opt-sell')) : null;
+  if (!buy || (s.spread && !sell)) return { error: s.spread ? 'Pick both strikes.' : 'Pick the strike.' };
+  const fits = o => o.underlying === u && o.expiry === exp && o.type === s.type;
+  if (!fits(buy) || (sell && !fits(sell))) return { error: 'Pick the strikes again — they belong to another expiry.' };
+  if (sell && (s.type === 'C' ? !(buy.strike < sell.strike) : !(buy.strike > sell.strike)))
+    return { error: s.type === 'C' ? 'In a call spread the strike you buy is below the one you sell.'
+                                   : 'In a put spread the strike you buy is above the one you sell.' };
+  const legs = [{ inst: buy.inst, strike: buy.strike, type: buy.type, side: 1 }];
+  if (sell) legs.push({ inst: sell.inst, strike: sell.strike, type: sell.type, side: -1 });
+  const tk = _optTickers[u + ':' + exp];
+  let marks = tk ? legs.map(l => { const t = Object.prototype.hasOwnProperty.call(tk, l.inst) ? tk[l.inst] : null; return t ? deriveNum(t.M) : null; }) : null;
+  if (marks && marks.some(m => m == null)) marks = null;
+  const index = marks ? deriveNum(tk[legs[0].inst].I) : null;
+  const mark  = marks ? Math.max(0, legs.reduce((s2, l, i) => s2 + l.side * marks[i], 0)) : null;
+  return { underlying: u, expiry: exp, strategy, s, legs, marks, mark, index };
+}
+
+function readOptionForm() {
+  const f = optFormLegs();
+  if (f.error) return f;
+  const word  = f.s.spread ? 'spread' : 'contract';
+  const units = parseUserNumber(document.getElementById('f-units').value);
+  if (!(units > 0)) return { error: `Enter how many ${word}s you hold.` };
+  const paid = parseUserNumber(document.getElementById('f-entry').value);
+  if (!(paid > 0)) return { error: 'Enter what you paid.' };
+  const entry = _optPaidMode === 'total' ? paid / units : paid;
+  const st = optionStats({ legs: f.legs, entryPrice: entry });
+  if (isFinite(st.maxValue) && entry >= st.maxValue)
+    return { error: `That is ${fmtOptUsd(entry)} per ${word} — more than it can ever be worth (${fmtOptUsd(st.maxValue)}). Check the amount, and whether it is the total or per ${word}.` };
+  return { ...f, units, entry, name: optionName(f.underlying, f.strategy, f.legs) };
+}
+
+function updateOptPreview() {
+  if (_addMode !== 'option') return;
+  const f = optFormLegs();
+  if (f.error) { if (/^Pick the strikes again|^In a /.test(f.error)) setOptStatus(escHtml(f.error)); return; }
+  const word  = f.s.spread ? 'spread' : 'contract';
+  const units = parseUserNumber(document.getElementById('f-units').value);
+  const paid  = parseUserNumber(document.getElementById('f-entry').value);
+  const entry = paid > 0 ? (_optPaidMode === 'total' ? (units > 0 ? paid / units : null) : paid) : null;
+  const st    = optionStats({ legs: f.legs, entryPrice: entry || 0 });
+  const lines = [];
+  if (f.mark != null) {
+    const legsTxt = f.legs.map((l, i) => `${l.side > 0 ? 'buy' : 'sell'} ${fmtStrike(l.strike)}${l.type} ${fmtOptUsd(f.marks[i])}`).join(', ');
+    lines.push(`Worth now <b style="color:var(--text)">${fmtOptUsd(f.mark)}</b> per ${word} (${legsTxt})${f.index ? ` · ${escHtml(f.underlying)} ${fmtOptUsd(f.index)}` : ''}`);
+  } else {
+    lines.push('Fetching prices from Derive…');
+  }
+  lines.push((isFinite(st.maxValue) ? `Worth at most ${fmtOptUsd(st.maxValue)} per ${word} at expiry` : 'No cap on the upside') +
+             (entry ? ` · you paid ${fmtOptUsd(entry)} per ${word} · break-even ${st.breakevens.map(fmtOptUsd).join(' / ') || '—'}` : ''));
+  setOptStatus(lines.join('<br>'));
+}
+
+function submitOptionAsset() {
+  const f = readOptionForm();
+  if (f.error) { document.getElementById('f-error').textContent = f.error; return; }
+  const ticker = deriveOptionTicker(f.underlying, f.legs);
+  const { color, bg } = nextColorFor(ticker);
+  pushUndo(`add ${f.name}`);
+  portfolio.push({ name: f.name, ticker, sector: optionSector(f.underlying), units: f.units, entryPrice: f.entry,
+    currentPrice: f.mark != null ? f.mark : f.entry, targetPrice: null, invalidationPrice: null, currency: 'USD', color, bg,
+    thesis: '', leveraged: false, marginUSD: null, showThesis: false, coingeckoId: null, yahooTicker: null, direction: null,
+    hasCostBasis: true, option: true, underlying: f.underlying, expiry: f.expiry, optStrategy: f.strategy, legs: f.legs,
+    optIndex: f.index, optDelta: null, optMarkAt: f.mark != null ? Date.now() : null, optSettle: null,
+    openedDate: today(), posId: nextPosId++ });
+
+  const fundCashId = parseInt(document.getElementById('f-fund-cash').value);
+  if (fundCashId) {
+    const cashPos = cashPositions.find(c => c.id === fundCashId);
+    if (cashPos) {
+      const costUSD    = f.units * f.entry;
+      const cashFxRate = fxRates[(cashPos.currency || 'USD').toUpperCase()] ?? 1;
+      cashPos.amount = Math.max(0, cashPos.amount - costUSD / cashFxRate);
+    }
+  }
+
+  saveState();
+  hideAddModal();
+  renderAll();
+  fetchOptionPrices(); // delta + a fresh mark, async
+}
+
+// ── option details: payoff chart + the numbers ──
+let _optHover = null; // geometry of the chart on screen, for the hover crosshair
+
+// P&L at expiry for the whole position across a price range around the strikes. Exact: the
+// line is straight between strikes, so the points are the strikes, the break-evens and the two
+// ends; each piece is green above zero and red below. Numbers only - nothing typed goes in.
+function optionPayoffSvg(p, st) {
+  const W = 480, H = 210, L = 64, R = 14, T = 16, B = 34;
+  const n = p.units;
+  const k0 = st.strikes[0], k1 = st.strikes[st.strikes.length - 1];
+  const keyPts = [k0, k1, ...st.breakevens, p.optIndex].filter(x => x > 0);
+  let lo = Math.min(...keyPts), hi = Math.max(...keyPts);
+  const pad = Math.max((hi - lo) * 0.3, k1 * 0.12);
+  lo = Math.max(0, lo - pad); hi = hi + pad;
+  const pnl = S => (optionPayoff(p.legs, S) - st.debit) * n;
+  const xs  = [...new Set([lo, ...st.strikes, ...st.breakevens, hi].filter(x => x >= lo && x <= hi))].sort((a, b) => a - b);
+  const ys  = xs.map(pnl);
+  let yMin = Math.min(0, ...ys), yMax = Math.max(0, ...ys);
+  if (yMax - yMin < 1e-9) { yMax += 1; yMin -= 1; }
+  const yPad = (yMax - yMin) * 0.1; yMin -= yPad; yMax += yPad;
+  const X = S => L + (S - lo) / (hi - lo) * (W - L - R);
+  const Y = v => T + (yMax - v) / (yMax - yMin) * (H - T - B);
+  const f1 = v => v.toFixed(1);
+  const u = escHtml(p.underlying);
+  const txt = (x, y, s, anchor, color) => `<text x="${f1(x)}" y="${f1(y)}" text-anchor="${anchor}" style="fill:${color};font:10px var(--mono)">${s}</text>`;
+  const vline = (S, color, dash) => `<line x1="${f1(X(S))}" x2="${f1(X(S))}" y1="${T}" y2="${H - B}" style="stroke:${color};stroke-width:1${dash ? ';stroke-dasharray:3 3' : ''}" />`;
+  let out = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Profit or loss at expiry by ${u} price">`;
+  out += `<line x1="${L}" x2="${W - R}" y1="${f1(Y(0))}" y2="${f1(Y(0))}" style="stroke:var(--border2);stroke-width:1" />`;
+  const top = Math.max(...ys), bottom = Math.min(...ys);
+  const clear = v => Math.abs(Y(v) - Y(0)) >= 12; // "$0" only where it does not collide with max profit/loss
+  if (top > 0)    out += txt(L - 6, Y(top) + 3, '+' + fmtUsd(top), 'end', 'var(--text3)');
+  if (bottom < 0) out += txt(L - 6, Y(bottom) + 3, fmtUsd(bottom), 'end', 'var(--text3)');
+  if ((top <= 0 || clear(top)) && (bottom >= 0 || clear(bottom))) out += txt(L - 6, Y(0) + 3, '$0', 'end', 'var(--text3)');
+  st.strikes.forEach(k => { out += vline(k, 'var(--border2)', true) + txt(X(k), H - B + 14, fmtStrike(k), 'middle', 'var(--text3)'); });
+  st.breakevens.forEach(b => { out += txt(X(b), H - B + 26, 'BE ' + fmtOptUsd(b), 'middle', 'var(--text2)'); });
+  out += xs.slice(1).map((x, i) => {
+    const mid = pnl((xs[i] + x) / 2);
+    return `<line x1="${f1(X(xs[i]))}" y1="${f1(Y(ys[i]))}" x2="${f1(X(x))}" y2="${f1(Y(ys[i + 1]))}" style="stroke:${mid >= 0 ? 'var(--green)' : 'var(--red)'};stroke-width:2;stroke-linecap:round" />`;
+  }).join('');
+  if (p.optIndex > 0 && p.optIndex >= lo && p.optIndex <= hi) {
+    out += vline(p.optIndex, 'var(--cyan)', false) + txt(X(p.optIndex), T - 4, `${u} now ${fmtOptUsd(p.optIndex)}`, 'middle', 'var(--text2)');
+  }
+  out += `<line id="optCross" x1="0" x2="0" y1="${T}" y2="${H - B}" style="stroke:var(--text3);stroke-width:1;display:none" />`;
+  out += `<rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" style="fill:transparent;cursor:crosshair" onmousemove="optPayoffHover(event)" onmouseleave="optPayoffLeave()" />`;
+  out += '</svg>';
+  _optHover = { W, H, L, R, T, B, lo, hi, pnl, u: p.underlying };
+  return out;
+}
+
+function optPayoffHover(e) {
+  const g = _optHover;
+  const svg = e.currentTarget && e.currentTarget.ownerSVGElement;
+  if (!g || !svg) return;
+  const r  = svg.getBoundingClientRect();
+  const vx = Math.min(Math.max((e.clientX - r.left) / r.width * g.W, g.L), g.W - g.R);
+  const S  = g.lo + (vx - g.L) / (g.W - g.L - g.R) * (g.hi - g.lo);
+  const v  = g.pnl(S);
+  const cross = document.getElementById('optCross');
+  cross.setAttribute('x1', vx); cross.setAttribute('x2', vx); cross.style.display = '';
+  const tip = document.getElementById('optTip');
+  tip.textContent = `${g.u} ${fmtOptUsd(S)} → ${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
+  tip.style.left = (vx / g.W * r.width) + 'px';
+  tip.hidden = false;
+}
+function optPayoffLeave() {
+  const cross = document.getElementById('optCross'), tip = document.getElementById('optTip');
+  if (cross) cross.style.display = 'none';
+  if (tip) tip.hidden = true;
+}
+
+function optAgeText(ms) {
+  const s = Math.floor((Date.now() - ms) / 1000);
+  return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)} min ago` : `${Math.floor(s / 3600)} h ago`;
+}
+
+function showOptionModal(posId) {
+  const p = portfolio.find(x => x.posId === posId);
+  if (!p || !p.option) return;
+  const st = optionStats(p);
+  if (!st) return;
+  const word = optionUnitWord(p), u = escHtml(p.underlying), n = p.units;
+  const expired = optionExpired(p);
+  const both = v => `${fmtOptUsd(v)} per ${word} · ${fmtUsd(v * n)} total`;
+  const lo = st.strikes[0], hi = st.strikes[st.strikes.length - 1];
+  const call = p.legs[0].type === 'C';
+  const rows = [
+    ['Expiry', `${fmtOptExpiry(p.expiry)} · ${expired ? 'expired' : optionDaysLeft(p) + ' days left'}`],
+    ['Holding', escHtml(optionCount(p))],
+    ['Worth now', both(p.currentPrice)],
+    ['You paid', both(p.entryPrice)],
+    ['Max profit', isFinite(st.maxProfit) ? `${both(st.maxProfit)} · ${u} ${call ? 'at or above' : 'at or below'} ${fmtOptUsd(call ? hi : lo)}` : `no cap — it keeps rising with ${u}`],
+    ['Max loss', `${both(st.maxLoss)} · ${u} ${call ? 'at or below' : 'at or above'} ${fmtOptUsd(call ? lo : hi)}`],
+    ['Break-even at expiry', st.breakevens.length ? st.breakevens.map(x => `${u} ${fmtOptUsd(x)}`).join(' or ') : '—'],
+    [`${u} price`, p.optIndex ? `${fmtOptUsd(p.optIndex)} · ${expired && p.optSettle ? 'settlement price' : 'Derive index'}` : '—'],
+    ['Moves like', !expired && p.optDelta != null && isFinite(p.optDelta)
+      ? `${privacyMode ? '•••' : '≈ ' + Number((p.optDelta * n).toFixed(2))} ${u} right now (delta ${p.optDelta.toFixed(3)} per ${word})` : '—'],
+    ['Price', p.optMarkAt ? `Derive mark · ${optAgeText(p.optMarkAt)}` : 'Derive mark · not fetched yet'],
+  ];
+  document.getElementById('optionModalTitle').textContent = p.name;
+  document.getElementById('optionModalBody').innerHTML =
+    `<div class="opt-chart">${optionPayoffSvg(p, st)}<div class="opt-tip" id="optTip" hidden></div></div>` +
+    `<dl class="opt-stats">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>` +
+    `<div class="opt-note">The chart is profit or loss at expiry for the whole position. The mark is Derive's model price — when nobody is quoting a contract, selling before expiry can fetch less.</div>`;
+  document.getElementById('optionModal').classList.add('open');
+}
+function hideOptionModal() {
+  document.getElementById('optionModal').classList.remove('open');
+  _optHover = null;
+}
+
 // ── EDIT AN EXISTING POSITION ────────────────────────────────
 // Reuses the add-asset modal rather than duplicating it: same fields, same validation, but the
 // submit writes back into the position instead of pushing a new one. posId is the handle (not
@@ -5739,9 +6490,9 @@ function setSectorField(sector) {
 function showEditModal(posId) {
   const p = portfolio.find(x => x.posId === posId);
   if (!p) return;
-  showAddModal(p.physical ? 'physical' : p.skin ? 'skin' : p.leveraged ? 'perp' : 'spot');
+  showAddModal(p.physical ? 'physical' : p.skin ? 'skin' : p.option ? 'option' : p.leveraged ? 'perp' : 'spot');
   _editPosId = posId;
-  document.getElementById('addModalTitle').textContent     = p.physical ? 'Edit Physical Asset' : p.skin ? 'Edit CS Skin' : p.leveraged ? 'Edit Leverage Position' : 'Edit Position';
+  document.getElementById('addModalTitle').textContent     = p.physical ? 'Edit Physical Asset' : p.skin ? 'Edit CS Skin' : p.option ? 'Edit Option' : p.leveraged ? 'Edit Leverage Position' : 'Edit Position';
   document.getElementById('addModalSubmitBtn').textContent = 'Save Changes';
   document.getElementById('fund-from-cash-row').style.display = 'none';
   const set = (id, v) => { document.getElementById(id).value = (v == null ? '' : v); };
@@ -5763,6 +6514,16 @@ function showEditModal(posId) {
     set('f-steam', p.marketHashName);
     // A Steam name that differs from what the fields would build was typed by hand - keep it.
     _csMainSteamTouched = (p.marketHashName || '') !== csMarketName(p.name, p.exterior, p.variant);
+  } else if (p.option) {
+    set('f-units', p.units);
+    set('f-opt-underlying', p.underlying);
+    set('f-opt-strategy', p.optStrategy);
+    setOptPaidMode('total');
+    set('f-entry', Number((p.units * p.entryPrice).toFixed(2)));
+    onOptStrategyChange(true);
+    _optStrikesTouched = true;
+    const legs = p.legs || [];
+    onOptUnderlyingChange({ expiry: p.expiry, buy: (legs.find(l => l.side > 0) || {}).inst, sell: (legs.find(l => l.side < 0) || {}).inst });
   } else {
     set('f-ticker', p.ticker);
     set('f-units', p.units);
@@ -5820,8 +6581,23 @@ function submitEditAsset() {
       exterior: f.exterior, variant: f.variant, float: f.float, marketHashName: f.marketHashName });
     if (f.current) p.currentPrice = f.current;
     if (renamed) fetchSteamPrices(); // a different item - price it now (async, lands after the save below)
+  } else if (p.option) {
+    const f = readOptionForm();
+    if (f.error) { err.textContent = f.error; return; }
+    const newLegs = JSON.stringify(f.legs) !== JSON.stringify(p.legs);
+    pushUndo(`edit ${p.name}`);
+    Object.assign(p, { name: f.name, units: f.units, entryPrice: f.entry, underlying: f.underlying, expiry: f.expiry, optStrategy: f.strategy, legs: f.legs });
+    if (newLegs) {
+      // A different contract: new row code and sector, today's value from the form, no stale settle.
+      p.ticker = deriveOptionTicker(f.underlying, f.legs, p.posId);
+      p.sector = optionSector(f.underlying);
+      if (f.mark != null) { p.currentPrice = f.mark; p.optIndex = f.index; p.optMarkAt = Date.now(); }
+      p.optSettle = null;
+      p.optDelta  = null;
+      fetchOptionPrices();
+    }
   } else {
-    const ticker  = val('f-ticker').trim().toUpperCase();
+    const ticker  = cleanCode(val('f-ticker').trim().toUpperCase());
     const units   = num('f-units');
     const entry   = num('f-entry');
     const current = num('f-current');
@@ -5870,8 +6646,9 @@ function submitAddAsset() {
   if (_editPosId != null)      { submitEditAsset(); return; }
   if (_addMode === 'physical') { submitPhysicalAsset(); return; }
   if (_addMode === 'skin')     { submitSkinAsset(); return; }
+  if (_addMode === 'option')   { submitOptionAsset(); return; }
   const name     = document.getElementById('f-name').value.trim();
-  const ticker   = document.getElementById('f-ticker').value.trim().toUpperCase();
+  const ticker   = cleanCode(document.getElementById('f-ticker').value.trim().toUpperCase());
   const sector   = document.getElementById('f-sector').value.trim() || 'Other';
   const units    = parseFloat(document.getElementById('f-units').value);
   const entry    = parseFloat(document.getElementById('f-entry').value);
@@ -7499,14 +8276,14 @@ function renderPrivateAssets() {
           onblur="updatePrivateAssetValue(${a.id}, this.value)"
           onkeydown="if(event.key==='Enter')this.blur()"
           style="width:100px;text-align:right"
-        /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${a.currency}</span>
+        /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${escHtml(a.currency)}</span>
       </div>`;
       pnlCell = '<span style="color:var(--text3)">—</span>';
     }
     const sub = a.category === 'CS Skins' ? csSkinDetail(a) : '';
     return `<tr>
       <td style="font-weight:600">${escHtml(a.name)}${sub ? `<div class="private-sub">${escHtml(sub)}</div>` : ''}</td>
-      <td><span class="private-cat-badge">${a.category}</span></td>
+      <td><span class="private-cat-badge">${escHtml(a.category)}</span></td>
       <td class="right">${valueCell}</td>
       <td class="right">${fmtPriv(usd)}</td>
       <td class="right">${pnlCell}</td>
@@ -7542,7 +8319,7 @@ function renderPrivateCash() {
             onblur="updatePrivateCashAmount(${c.id}, this.value)"
             onkeydown="if(event.key==='Enter')this.blur()"
             style="width:100px;text-align:right"
-          /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${c.currency}</span>
+          /><span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${escHtml(c.currency)}</span>
         </div>`;
     return `<tr>
       <td style="font-weight:600">${escHtml(c.label)}</td>
@@ -7672,7 +8449,7 @@ function onPrivateCategoryChange() {
   onPrivateCsInput();
 }
 function onPrivateTickerInput() {
-  const ticker = document.getElementById('pa-ticker').value.trim().toUpperCase();
+  const ticker = cleanCode(document.getElementById('pa-ticker').value.trim().toUpperCase());
   const known = KNOWN_PRICE_SOURCES[ticker];
   if (known?.coingeckoId) document.getElementById('pa-coingecko').value = known.coingeckoId;
   if (known?.yahooTicker) document.getElementById('pa-yahoo').value     = known.yahooTicker;
@@ -7721,7 +8498,7 @@ function submitPrivateAsset() {
                          exterior, variant, float, marketHashName });
   } else if (category === 'Crypto' || category === 'Stocks / Shares') {
     const crypto      = category === 'Crypto';
-    const ticker      = document.getElementById('pa-ticker').value.trim().toUpperCase();
+    const ticker      = cleanCode(document.getElementById('pa-ticker').value.trim().toUpperCase());
     const units       = parseFloat(document.getElementById('pa-units').value);
     if (!ticker)                    { document.getElementById('pa-error').textContent = 'Ticker is required.'; return; }
     if (isNaN(units) || units <= 0) { document.getElementById('pa-error').textContent = 'Enter a valid number of units.'; return; }
@@ -7772,7 +8549,7 @@ async function fetchPrivateCryptoPrices() {
       const data = await res.json();
       cryptoAssets.forEach(a => {
         const price = data[a.coingeckoId]?.usd;
-        if (price) { a.currentPrice = price; updated = true; }
+        if (typeof price === 'number' && isFinite(price) && price > 0) { a.currentPrice = price; updated = true; }
       });
     } catch(e) { /* silent fail — keep last known price */ }
   }
