@@ -426,6 +426,8 @@ input[type="range"] { accent-color: var(--cyan); }
 /* Options (Derive) - paid-mode toggle in the add modal, payoff chart + numbers in the detail modal */
 .opt-toggle { flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); color: var(--text2); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
 .opt-toggle.active { border-color: var(--cyan); color: var(--cyan); }
+/* Every td is nowrap; an option's name + expiry line may wrap instead of pushing Close off-screen */
+.asset-text-wrap { white-space: normal; min-width: 0; }
 .opt-chart { position: relative; margin-bottom: 4px; }
 .opt-chart svg { display: block; width: 100%; height: auto; }
 .opt-tip { position: absolute; top: 0; pointer-events: none; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-family: var(--mono); font-size: 11px; color: var(--text); white-space: nowrap; transform: translate(-50%, 0); }
@@ -4374,7 +4376,7 @@ function renderTable(data) {
         <div class="asset-cell">
           <div class="asset-dot" style="background:${p.bg};color:${p.color};${editMode ? 'cursor:pointer;outline:2px solid rgba(255,255,255,0.15);outline-offset:1px' : ''}"
             ${editMode ? `onclick="cycleColor(${p.posId})" title="Click to change color"` : ''}>${escHtml(p.ticker.slice(0,4))}</div>
-          <div>
+          <div${p.option ? ' class="asset-text-wrap"' : ''}>
             <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}">${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}</span>` : ''}${invalidationBreached(p) ? `<span style="color:var(--red);margin-left:5px;cursor:help" title="Invalidation level crossed (${fmtNative(p.invalidationPrice, p.currency)}) — check your thesis">⚠</span>` : ''}</div>
             <div class="asset-ticker">${escHtml(p.skin ? (csSkinDetail(p) || p.ticker) : p.option ? optionDetail(p) : p.ticker)}</div>
           </div>
@@ -6073,14 +6075,14 @@ function optionDetail(p) {
   if (optionExpired(p)) return p.optSettle ? `Expired ${fmtOptExpiry(p.expiry)} · settled at ${fmtOptUsd(p.optSettle)}`
                                            : `Expired ${fmtOptExpiry(p.expiry)} · waiting for Derive's settlement price`;
   const d = optionDaysLeft(p);
-  return `Expires ${fmtOptExpiry(p.expiry)} · ${d} day${d === 1 ? '' : 's'} left`;
+  return `${fmtOptExpiry(p.expiry)} · ${d}d left`; // short on purpose - the holdings table has no width to spare
 }
 // Link under the P&L $ cell to the payoff chart, carrying the break-even at expiry.
 function optionSub(p) {
   if (!p.option) return '';
   const st = optionStats(p);
   const be = st && st.breakevens.length ? st.breakevens.map(fmtOptUsd).join(' / ') : null;
-  return `<span class="realized-sub" onclick="showOptionModal(${Number(p.posId)})" title="Payoff at expiry, max profit and loss, break-even">payoff${be ? ` · break-even ${be}` : ''}</span>`;
+  return `<span class="realized-sub" onclick="showOptionModal(${Number(p.posId)})" title="Break-even at expiry${be ? ' ' + be : ''} — click for the payoff chart, max profit and loss">payoff${be ? ` · BE ${be}` : ''}</span>`;
 }
 
 // One pass over every option row: live marks for open ones (one get_tickers call per underlying
