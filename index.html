@@ -1545,7 +1545,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </footer>
 
 <!-- ABOUT MODAL -->
-<div class="modal-overlay" id="aboutModal" onclick="if(event.target===this)hideAboutModal()">
+<div class="modal-overlay" id="aboutModal" onclick="if(isBackdropClick(event,this))hideAboutModal()">
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
       <div class="modal-title">About this dashboard</div>
@@ -1561,7 +1561,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- ADD PRIVATE ASSET MODAL -->
-<div class="modal-overlay" id="privateAssetModal" onclick="if(event.target===this)hideAddPrivateAssetModal()">
+<div class="modal-overlay" id="privateAssetModal" onclick="if(isBackdropClick(event,this))hideAddPrivateAssetModal()">
   <div class="modal" style="max-width:440px">
     <div class="modal-title">Add Private Asset</div>
     <div class="form-group">
@@ -1681,7 +1681,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- ADD PRIVATE CASH MODAL -->
-<div class="modal-overlay" id="privateCashModal" onclick="if(event.target===this)hideAddPrivateCashModal()">
+<div class="modal-overlay" id="privateCashModal" onclick="if(isBackdropClick(event,this))hideAddPrivateCashModal()">
   <div class="modal" style="max-width:380px">
     <div class="modal-title" id="privateCashModalTitle">Add Cash Holding</div>
     <div class="form-group">
@@ -1724,7 +1724,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- ADD HISTORY MODAL -->
-<div class="modal-overlay" id="historyModal" onclick="if(event.target===this)hideHistoryModal()">
+<div class="modal-overlay" id="historyModal" onclick="if(isBackdropClick(event,this))hideHistoryModal()">
   <div class="modal" style="width:360px">
     <div class="modal-header">
       <div class="modal-title" id="historyModalTitle">Add Net Worth Snapshot</div>
@@ -1769,7 +1769,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- CLOUD SYNC MODAL -->
-<div class="modal-overlay" id="syncModal" onclick="if(event.target===this)hideSyncModal()">
+<div class="modal-overlay" id="syncModal" onclick="if(isBackdropClick(event,this))hideSyncModal()">
   <div class="modal" style="width:520px">
     <div class="modal-header">
       <div class="modal-title">Sync across computers</div>
@@ -1836,7 +1836,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- ADD CASH MODAL -->
-<div class="modal-overlay" id="cashModal" onclick="if(event.target===this)hideCashModal()">
+<div class="modal-overlay" id="cashModal" onclick="if(isBackdropClick(event,this))hideCashModal()">
   <div class="modal" style="width:380px">
     <div class="modal-header">
       <div class="modal-title">Add Cash Position</div>
@@ -1878,7 +1878,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- ADD ASSET MODAL -->
-<div class="modal-overlay" id="addModal" onclick="if(event.target===this)hideAddModal()">
+<div class="modal-overlay" id="addModal" onclick="if(isBackdropClick(event,this))hideAddModal()">
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title" id="addModalTitle">Add Asset</div>
@@ -2087,7 +2087,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- CLOSE POSITION MODAL -->
-<div class="modal-overlay" id="closeModal" onclick="if(event.target===this)hideCloseModal()">
+<div class="modal-overlay" id="closeModal" onclick="if(isBackdropClick(event,this))hideCloseModal()">
   <div class="modal" style="max-width:420px">
     <div class="modal-header">
       <div class="modal-title" id="closeModalTitle">Close Position</div>
@@ -2117,7 +2117,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- OPTION DETAILS MODAL — payoff at expiry + the numbers behind an option row -->
-<div class="modal-overlay" id="optionModal" onclick="if(event.target===this)hideOptionModal()">
+<div class="modal-overlay" id="optionModal" onclick="if(isBackdropClick(event,this))hideOptionModal()">
   <div class="modal" style="max-width:540px">
     <div class="modal-header">
       <div class="modal-title" id="optionModalTitle">Option</div>
@@ -2131,7 +2131,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- LOG PAST TRADE MODAL (backfill a closed trade that never lived in the dashboard) -->
-<div class="modal-overlay" id="pastTradeModal" onclick="if(event.target===this)hidePastTradeModal()">
+<div class="modal-overlay" id="pastTradeModal" onclick="if(isBackdropClick(event,this))hidePastTradeModal()">
   <div class="modal" style="max-width:560px">
     <div class="modal-header">
       <div class="modal-title">Log Past Trade</div>
@@ -2302,7 +2302,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- REALIZED PNL MODAL -->
-<div class="modal-overlay" id="realizedModal" onclick="if(event.target===this)cancelRealizedModal()">
+<div class="modal-overlay" id="realizedModal" onclick="if(isBackdropClick(event,this))cancelRealizedModal()">
   <div class="modal" style="max-width:400px">
     <div class="modal-header">
       <div class="modal-title" id="realizedModalTitle">Lock in Realized P&amp;L</div>
@@ -2368,7 +2368,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 </div>
 
 <!-- AIRDROP: ADD/EDIT MODAL -->
-<div class="modal-overlay" id="airdropModal" onclick="if(event.target===this)hideAirdropModal()">
+<div class="modal-overlay" id="airdropModal" onclick="if(isBackdropClick(event,this))hideAirdropModal()">
   <div class="modal" style="max-width:560px">
     <div class="modal-header">
       <div class="modal-title" id="airdropModalTitle">Add Airdrop</div>
@@ -3990,6 +3990,16 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') toggleAddMenu(false);
 });
+
+// Popups close on a click on the dark backdrop — but only if the press also started there.
+// Dragging to select text in a field and letting go over the backdrop fires a click on the
+// backdrop too, which used to throw away a half-filled form.
+let _pressStartTarget = null;
+function notePressStart(e) { _pressStartTarget = e.target; }
+document.addEventListener('pointerdown', notePressStart, true);
+function isBackdropClick(e, overlay) {
+  return e.target === overlay && _pressStartTarget === overlay;
+}
 
 // ── FX ───────────────────────────────────────────────────────────────────────
 
