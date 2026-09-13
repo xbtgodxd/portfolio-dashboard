@@ -304,6 +304,11 @@ tr:hover td { background: var(--bg3); }
   color: var(--text3);
   margin-top: 1px;
 }
+/* A coin whose price is not updating (no source, unknown id, answer rejected) - the tooltip says why */
+.price-warn { color: var(--amber); cursor: help; margin-left: 4px; white-space: nowrap; }
+/* The line under a CoinGecko ID box: what the lookup from the ticker found */
+.cg-hint { font-size: 10px; color: var(--text3); margin-top: 4px; line-height: 1.5; }
+.cg-hint:empty { display: none; }
 .sector-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -1262,7 +1267,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
         Add Physical Asset
       </button>
-      <button class="add-asset-btn" onclick="showAddModal('skin')" title="Add a Counter-Strike skin, knife, gloves, case or sticker — priced live from the Steam Market">
+      <button class="add-asset-btn" onclick="showAddModal('skin')" title="Add a Counter-Strike skin, knife, gloves, case or sticker — you set its price yourself">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><line x1="12" y1="1" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="23"/><line x1="1" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="23" y2="12"/></svg>
         Add CS Skin
       </button>
@@ -1532,7 +1537,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="modal-title">Add Private Asset</div>
     <div class="form-group">
       <label class="form-label">Name</label>
-      <input class="form-input" id="pa-name" placeholder="e.g. Apartment" oninput="onPrivateCsInput()" />
+      <input class="form-input" id="pa-name" placeholder="e.g. Apartment" />
     </div>
     <div class="form-group">
       <label class="form-label">Category</label>
@@ -1550,11 +1555,11 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     </div>
     <!-- TRACKED INVESTMENT FIELDS (Crypto, Stocks / Shares & CS Skins) -->
     <div id="pa-tracked-fields" style="display:none">
-      <!-- CS SKINS: wear + StatTrak/Souvenir build the Steam market name -->
+      <!-- CS SKINS: wear + StatTrak/Souvenir, shown under the name -->
       <div id="pa-cs-fields" style="display:none;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
           <label class="form-label">Exterior</label>
-          <select class="form-input" id="pa-exterior" onchange="onPrivateCsInput()">
+          <select class="form-input" id="pa-exterior">
             <option value="Factory New">Factory New</option>
             <option value="Minimal Wear">Minimal Wear</option>
             <option value="Field-Tested">Field-Tested</option>
@@ -1565,7 +1570,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         </div>
         <div class="form-group">
           <label class="form-label">Variant</label>
-          <select class="form-input" id="pa-variant" onchange="onPrivateCsInput()">
+          <select class="form-input" id="pa-variant">
             <option value="">Normal</option>
             <option value="StatTrak™">StatTrak™</option>
             <option value="Souvenir">Souvenir</option>
@@ -1592,7 +1597,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
           <input class="form-input" id="pa-entry" type="number" placeholder="e.g. 720" step="any" min="0" />
         </div>
         <div class="form-group">
-          <label class="form-label">Current Price <span style="color:var(--text3);font-weight:400;text-transform:none">optional — auto-fetched</span></label>
+          <label class="form-label">Current Price <span id="pa-current-hint" style="color:var(--text3);font-weight:400;text-transform:none">optional — auto-fetched</span></label>
           <input class="form-input" id="pa-current" type="number" placeholder="auto" step="any" min="0" />
         </div>
       </div>
@@ -1605,20 +1610,13 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         </select>
       </div>
       <div class="form-group" id="pa-coingecko-group">
-        <label class="form-label">CoinGecko ID <span style="color:var(--text3);font-weight:400;text-transform:none">auto-filled for known tickers</span></label>
+        <label class="form-label">CoinGecko ID <span style="color:var(--text3);font-weight:400;text-transform:none">found from the ticker</span></label>
         <input class="form-input" id="pa-coingecko" placeholder="e.g. bitcoin" />
+        <div class="cg-hint" id="pa-cg-hint"></div>
       </div>
       <div class="form-group" id="pa-yahoo-group" style="display:none">
         <label class="form-label">Yahoo Ticker <span style="color:var(--text3);font-weight:400;text-transform:none">for stocks — find it on finance.yahoo.com</span></label>
         <input class="form-input" id="pa-yahoo" placeholder="e.g. NOVO-B.CO, NVDA" style="text-transform:uppercase" />
-      </div>
-      <div class="form-group" id="pa-steam-group" style="display:none">
-        <label class="form-label">Steam Market Name <span style="color:var(--text3);font-weight:400;text-transform:none">auto-filled — used to fetch the price</span></label>
-        <input class="form-input" id="pa-steam" placeholder="e.g. StatTrak™ AK-47 | Redline (Field-Tested)" oninput="_csSteamTouched = true" />
-        <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5">
-          Priced at the Steam Market's recent median sale. Cash sites (CSFloat, Skinport) usually pay less.
-          Steam can't list items above ~$2,000 — for those, type the price in Edit mode.
-        </div>
       </div>
     </div>
     <!-- MANUAL VALUE FIELDS -->
@@ -1860,11 +1858,11 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="form-row">
       <div class="form-group" id="f-name-group">
         <label class="form-label">Asset Name</label>
-        <input class="form-input" id="f-name" placeholder="e.g. Bitcoin" oninput="onMainCsInput()" />
+        <input class="form-input" id="f-name" placeholder="e.g. Bitcoin" />
       </div>
       <div class="form-group" id="f-ticker-group">
         <label class="form-label">Ticker</label>
-        <input class="form-input" id="f-ticker" placeholder="e.g. BTC" oninput="this.value=this.value.toUpperCase();suggestSector()" />
+        <input class="form-input" id="f-ticker" placeholder="e.g. BTC" oninput="this.value=this.value.toUpperCase();suggestSector();scheduleCoinLookup('f-')" />
       </div>
     </div>
     <!-- CS SKIN FIELDS (skin mode only) — same inputs as the Private tab's CS Skins -->
@@ -1872,7 +1870,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Exterior</label>
-          <select class="form-input" id="f-exterior" onchange="onMainCsInput()">
+          <select class="form-input" id="f-exterior">
             <option value="Factory New">Factory New</option>
             <option value="Minimal Wear">Minimal Wear</option>
             <option value="Field-Tested">Field-Tested</option>
@@ -1883,7 +1881,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         </div>
         <div class="form-group">
           <label class="form-label">Variant</label>
-          <select class="form-input" id="f-variant" onchange="onMainCsInput()">
+          <select class="form-input" id="f-variant">
             <option value="">Normal</option>
             <option value="StatTrak™">StatTrak™</option>
             <option value="Souvenir">Souvenir</option>
@@ -1895,14 +1893,6 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
           <label class="form-label">Float <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional — sets exterior</span></label>
           <input class="form-input" id="f-float" type="text" inputmode="decimal" placeholder="e.g. 0.2134" oninput="onMainFloatInput()" />
         </div>
-        <div class="form-group">
-          <label class="form-label">Steam Market Name <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">auto-filled</span></label>
-          <input class="form-input" id="f-steam" placeholder="e.g. StatTrak™ AK-47 | Redline (Field-Tested)" oninput="_csMainSteamTouched = true" />
-        </div>
-      </div>
-      <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:-8px;margin-bottom:16px">
-        Priced at the Steam Market's recent median sale. Cash sites (CSFloat, Skinport) usually pay less.
-        Steam can't list items above ~$2,000 — for those, type the price in Edit mode.
       </div>
     </div>
     <!-- OPTION FIELDS (option mode only) — contracts listed on Derive.xyz, priced from Derive's public feed -->
@@ -2010,12 +2000,13 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     </div>
     <div class="form-row" id="f-ids-row">
       <div class="form-group">
-        <label class="form-label">CoinGecko ID <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+        <label class="form-label">CoinGecko ID <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">found from the ticker</span></label>
         <input class="form-input" id="f-coingecko" placeholder="e.g. solana, bitcoin" />
+        <div class="cg-hint" id="f-cg-hint"></div>
       </div>
       <div class="form-group">
         <label class="form-label">Yahoo Ticker <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional — for stocks</span></label>
-        <input class="form-input" id="f-yahoo" placeholder="e.g. ORSTED.CO, NVDA, NOVO-B.CO" />
+        <input class="form-input" id="f-yahoo" placeholder="e.g. ORSTED.CO, NVDA, NOVO-B.CO" oninput="onYahooInput()" />
         <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.5">US stocks use the plain ticker (NVDA, AAPL). International stocks need an exchange suffix — find it by searching the stock on <em>finance.yahoo.com</em> and copying the ticker shown there (e.g. ORSTED.CO, NOVO-B.CO for Danish stocks).</div>
       </div>
     </div>
@@ -2945,6 +2936,7 @@ function themeColor(name) {
 
 const KNOWN_PRICE_SOURCES = {
   'LIT':    { coingeckoId: 'lighter' },
+  'DRV':    { coingeckoId: 'derive' }, // not 'lyra-finance' - that is the old LYRA token, ~1000x cheaper
   'MEGA':   { coingeckoId: 'megaeth' },
   'HYPE':   { coingeckoId: 'hyperliquid',  binanceTicker: 'HYPEUSDT' },
   'SEDA':   { coingeckoId: 'seda-2',       binanceTicker: 'SEDAUSDT' },
@@ -2958,6 +2950,125 @@ const KNOWN_PRICE_SOURCES = {
   'LINK':   { coingeckoId: 'chainlink',     binanceTicker: 'LINKUSDT' },
   'ORSTED': { yahooTicker: 'ORSTED.CO' },
 };
+
+// ── COIN LOOKUP + "NOT UPDATING" FLAG ──────────────────────────────────────
+// KNOWN_PRICE_SOURCES is only a shortcut list. Any other coin gets its CoinGecko id from
+// CoinGecko's public search (read-only, no key - the same host the prices come from) while the
+// ticker is typed: the coin whose symbol is exactly the ticker, best market-cap rank first. The
+// form shows the name it found, because symbols are not unique (NVDA also matches tokenized
+// NVIDIA stocks). An id typed by hand is never replaced. Answers are untrusted: an id must match
+// CG_ID_RE, and the name only ever goes into textContent.
+const CG_ID_RE = /^[a-z0-9][a-z0-9-]{0,99}$/;
+const _cgLookupCache = {}; // 'DRV' -> { id, name, rank } or null (no such coin). Session only.
+async function lookupCoingeckoCoin(ticker) {
+  const t = cleanCode(String(ticker || '').trim().toUpperCase());
+  if (!t) return null;
+  if (Object.prototype.hasOwnProperty.call(_cgLookupCache, t)) return _cgLookupCache[t];
+  let data;
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(t)}`);
+    data = await res.json();
+  } catch (_) { return undefined; }                          // could not ask - not cached, the next try asks again
+  if (!data || !Array.isArray(data.coins)) return undefined;  // rate limited / error answer
+  const rank = c => Number.isInteger(c.market_cap_rank) && c.market_cap_rank > 0 ? c.market_cap_rank : Infinity;
+  const best = data.coins
+    .filter(c => c && typeof c.symbol === 'string' && c.symbol.toUpperCase() === t && typeof c.id === 'string' && CG_ID_RE.test(c.id))
+    .sort((a, b) => (rank(a) === rank(b) ? 0 : rank(a) - rank(b)))[0];
+  const out = best ? { id: best.id, name: String(best.name || best.id).slice(0, 80), rank: isFinite(rank(best)) ? rank(best) : null } : null;
+  _cgLookupCache[t] = out;
+  return out;
+}
+
+// Per modal ('f-' main, 'pa-' Private): _cgAuto = the id the lookup put in the box - while the box
+// still holds exactly that, a new ticker may replace it; anything else was typed by hand.
+// _cgStored = the saved id of a coin being edited because it is not updating; the lookup may
+// offer a better one, but a miss puts the saved one back rather than blanking it.
+const _cgAuto   = { 'f-': '', 'pa-': '' };
+const _cgStored = { 'f-': '', 'pa-': '' };
+const _cgSeq    = { 'f-': 0,  'pa-': 0 };
+const _cgTimer  = {};
+function resetCoinLookup(px) {
+  clearTimeout(_cgTimer[px]);
+  _cgSeq[px]++;
+  _cgAuto[px] = _cgStored[px] = '';
+  document.getElementById(px + 'cg-hint').textContent = '';
+}
+function scheduleCoinLookup(px) {
+  clearTimeout(_cgTimer[px]);
+  _cgTimer[px] = setTimeout(() => runCoinLookup(px), 600); // wait for the typing to stop
+}
+// The main modal is also used for stocks: a Yahoo ticker takes a looked-up id back out.
+function onYahooInput() {
+  const idEl = document.getElementById('f-coingecko');
+  if (!document.getElementById('f-yahoo').value.trim() || !_cgAuto['f-'] || idEl.value.trim() !== _cgAuto['f-']) return;
+  idEl.value = '';
+  resetCoinLookup('f-');
+}
+async function runCoinLookup(px) {
+  clearTimeout(_cgTimer[px]);
+  const idEl = document.getElementById(px + 'coingecko');
+  const hint = document.getElementById(px + 'cg-hint');
+  const seq  = ++_cgSeq[px];
+  const t    = cleanCode(document.getElementById(px + 'ticker').value.trim().toUpperCase());
+  const auto = () => { const v = idEl.value.trim(); return !v || v === _cgAuto[px]; };
+  const putBack = () => { idEl.value = _cgStored[px]; _cgAuto[px] = _cgStored[px]; };
+  if (!auto()) { hint.textContent = ''; return; } // an id typed by hand is the owner's call
+  const wanted = px === 'f-' ? (_addMode === 'spot' || _addMode === 'perp') && !document.getElementById('f-yahoo').value.trim()
+                             : document.getElementById('pa-category').value === 'Crypto';
+  if (!t || !wanted) { putBack(); hint.textContent = ''; return; }
+  const was   = _cgStored[px];
+  const known = KNOWN_PRICE_SOURCES[t] && KNOWN_PRICE_SOURCES[t].coingeckoId;
+  if (known) {
+    idEl.value = _cgAuto[px] = known;
+    hint.textContent = was && was !== known ? `Known coin — uses “${known}” instead of “${was}”.` : '';
+    return;
+  }
+  hint.textContent = `Looking up ${t} on CoinGecko…`;
+  const hit = await lookupCoingeckoCoin(t);
+  if (seq !== _cgSeq[px]) return;                 // a newer ticker, or the form was closed
+  if (!auto()) { hint.textContent = ''; return; } // typed in while we waited
+  if (hit === undefined) {
+    putBack();
+    hint.textContent = "Couldn't reach CoinGecko — type the ID yourself: it's the last part of the coin's address on coingecko.com.";
+    return;
+  }
+  if (!hit) {
+    putBack();
+    hint.textContent = `CoinGecko has no coin with the ticker ${t}.${was ? '' : ' Without an ID this price only changes when you edit it.'}`;
+    return;
+  }
+  idEl.value = _cgAuto[px] = hit.id;
+  hint.textContent = `Found: ${hit.name} (${t})${hit.rank ? ' · rank #' + hit.rank : ''}${was && was !== hit.id ? ` — replaces “${was}”` : ''}. Not the right coin? Type its ID instead.`;
+}
+
+// Why a price is not moving, keyed 'p<posId>' (main tab) / 'a<id>' (Private tab). Filled by the
+// price fetchers and never saved - it describes this session's answers, not the holding.
+let _priceWarn = {};
+let _priceWarnDirty = false;
+function setPriceWarn(key, msg) {
+  if ((_priceWarn[key] || null) === (msg || null)) return;
+  if (msg) _priceWarn[key] = msg; else delete _priceWarn[key];
+  _priceWarnDirty = true;
+}
+const YAHOO_FAIL_MSG = 'Could not get this price from Yahoo (the free relay it goes through is down) — showing the last price.';
+function cgUnknownMsg(id, canEdit) {
+  return `CoinGecko has no coin with the ID “${id}”` + (canEdit ? ' — fix it in Edit.' : ' — remove it and add it again; the add form now finds the ID from the ticker.');
+}
+function priceWarnFor(p) {
+  if (!p || p.physical || p.skin || p.option) return null;
+  if (!resolvedCgId(p) && !p.yahooTicker) return 'No price source, so this price only changes when you edit it. Add a CoinGecko ID (crypto) or a Yahoo ticker (stocks) in Edit.';
+  return _priceWarn['p' + p.posId] || null;
+}
+// Private tab crypto: the shortcut list wins over the stored id, as on the main tab, so a coin
+// saved with a wrong or old id (DRV as 'lyra-finance') still gets priced.
+function privateCgId(a) { return KNOWN_PRICE_SOURCES[(a.ticker || '').toUpperCase()]?.coingeckoId || a.coingeckoId || null; }
+function privatePriceWarnFor(a) {
+  if (a.category === 'Crypto' && !privateCgId(a)) return 'No CoinGecko ID, so this price never updates by itself. Remove it and add it again — the add form now finds the ID from the ticker.';
+  if (a.category === 'Stocks / Shares' && !a.yahooTicker) return 'No Yahoo ticker, so this price never updates by itself.';
+  if (a.category !== 'Crypto' && a.category !== 'Stocks / Shares') return null;
+  return _priceWarn['a' + a.id] || null;
+}
+function priceWarnBadge(msg) { return msg ? `<span class="price-warn" title="${escHtml(msg)}">⚠ not updating</span>` : ''; }
 
 // ── STATE ───────────────────────────────────────────────────────────────────
 
@@ -3413,7 +3524,7 @@ function buildStateJson() {
       physical: p.physical || false,
       hasCostBasis: p.hasCostBasis || false,
       // CS skins only - other rows stay exactly as they were
-      ...(p.skin ? { skin: true, exterior: p.exterior || '', variant: p.variant || '', float: p.float ?? null, marketHashName: p.marketHashName || '' } : {}),
+      ...(p.skin ? { skin: true, exterior: p.exterior || '', variant: p.variant || '', float: p.float ?? null } : {}),
       // Options only - the legs, and the last numbers Derive sent (so the row reads right offline)
       ...(p.option ? { option: true, underlying: p.underlying || '', expiry: p.expiry || '', optStrategy: p.optStrategy || '', legs: p.legs || [],
                        optIndex: p.optIndex ?? null, optDelta: p.optDelta ?? null, optMarkAt: p.optMarkAt ?? null, optSettle: p.optSettle ?? null } : {}),
@@ -3876,7 +3987,7 @@ async function fetchPrices() {
   // KNOWN_PRICE_SOURCES takes priority over whatever coingeckoId is stored (fixes stale/wrong IDs)
   const cgMap = {};
   portfolio.forEach(p => {
-    if (p.physical || p.skin || p.option) return; // skins price off Steam, options off Derive
+    if (p.physical || p.skin || p.option) return; // skins are priced by hand, options off Derive
     const known = KNOWN_PRICE_SOURCES[p.ticker?.toUpperCase()];
     const cgId = (known?.coingeckoId) || p.coingeckoId;
     if (cgId) { p._resolvedCgId = cgId; cgMap[cgId] = true; }
@@ -3886,18 +3997,28 @@ async function fetchPrices() {
     try {
       const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgIds.join(',')}&vs_currencies=usd`);
       const data = await res.json();
+      // An answer that leaves an id out means CoinGecko has no such coin. A rate-limit answer
+      // ({ status: {...} }) says nothing about the ids, so it flags nothing.
+      const answered = data && typeof data === 'object' && !data.status;
       portfolio.forEach(p => {
-        const price = data[p._resolvedCgId]?.usd;
+        const id = p._resolvedCgId;
+        delete p._resolvedCgId;
+        if (!id) return;
+        const price = data[id]?.usd;
         if (price && typeof price === 'number' && isFinite(price) && price > 0) {
           const prev = p.currentPrice;
-          // Reject if price is >10× or <0.1× the stored value — likely an API glitch
+          // Reject if price is >10× or <0.1× the stored value — an API glitch, or the wrong coin
           const ratio = prev > 0 ? price / prev : 1;
           if (ratio < 10 && ratio > 0.1) {
             p.currentPrice = price;
             updated = true;
+            setPriceWarn('p' + p.posId, null);
+          } else {
+            setPriceWarn('p' + p.posId, `CoinGecko says $${fmtPriceNum(price)} for “${id}” — more than 10× off the last price, so it was ignored. Probably the wrong coin: check the CoinGecko ID in Edit.`);
           }
+        } else if (answered) {
+          setPriceWarn('p' + p.posId, cgUnknownMsg(id, true));
         }
-        delete p._resolvedCgId;
       });
     } catch(e) { console.warn('CoinGecko fetch failed:', e); }
   }
@@ -3922,7 +4043,7 @@ async function fetchPrices() {
           const bnPrice = parseFloat(rawPrice);
           if (!bnPrice || !isFinite(bnPrice) || bnPrice <= 0) return;
           const cgPrice = p.currentPrice;
-          if (!cgPrice || cgPrice <= 0) { p.currentPrice = bnPrice; updated = true; return; }
+          if (!cgPrice || cgPrice <= 0) { p.currentPrice = bnPrice; updated = true; setPriceWarn('p' + p.posId, null); return; }
           const divergence = Math.abs(bnPrice - cgPrice) / bnPrice;
           if (divergence > 0.05) {
             // CoinGecko and Binance disagree by more than 5% — trust Binance
@@ -3930,6 +4051,7 @@ async function fetchPrices() {
             p.currentPrice = bnPrice;
             p._priceSource = 'binance-override';
             updated = true;
+            setPriceWarn('p' + p.posId, null);
           } else {
             delete p._priceSource;
           }
@@ -3950,9 +4072,9 @@ async function fetchPrices() {
       const price = data.chart.result[0].meta.regularMarketPrice;
       if (price && typeof price === 'number' && isFinite(price) && price > 0) {
         const ratio = p.currentPrice > 0 ? price / p.currentPrice : 1;
-        if (ratio < 10 && ratio > 0.1) { p.currentPrice = price; updated = true; }
+        if (ratio < 10 && ratio > 0.1) { p.currentPrice = price; updated = true; setPriceWarn('p' + p.posId, null); }
       }
-    } catch(e) { console.warn('Yahoo Finance fetch failed:', e); }
+    } catch(e) { console.warn('Yahoo Finance fetch failed:', e); setPriceWarn('p' + p.posId, YAHOO_FAIL_MSG); }
   }
 
   if (updated) {
@@ -3960,7 +4082,8 @@ async function fetchPrices() {
     saveState();
     renderAllSafe(); // never rebuild the DOM out from under a field being typed in
     renderFxBar();
-  }
+  } else if (_priceWarnDirty) renderAllSafe(); // only a "not updating" flag changed
+  _priceWarnDirty = false;
   await optRun; // so the first-load snapshot sees option values too
 }
 
@@ -4378,7 +4501,7 @@ function renderTable(data) {
             ${editMode ? `onclick="cycleColor(${p.posId})" title="Click to change color"` : ''}>${escHtml(p.ticker.slice(0,4))}</div>
           <div${p.option ? ' class="asset-text-wrap"' : ''}>
             <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}">${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}</span>` : ''}${invalidationBreached(p) ? `<span style="color:var(--red);margin-left:5px;cursor:help" title="Invalidation level crossed (${fmtNative(p.invalidationPrice, p.currency)}) — check your thesis">⚠</span>` : ''}</div>
-            <div class="asset-ticker">${escHtml(p.skin ? (csSkinDetail(p) || p.ticker) : p.option ? optionDetail(p) : p.ticker)}</div>
+            <div class="asset-ticker">${escHtml(p.skin ? (csSkinDetail(p) || p.ticker) : p.option ? optionDetail(p) : p.ticker)}${priceWarnBadge(priceWarnFor(p))}</div>
           </div>
         </div>
       </td>
@@ -5735,7 +5858,7 @@ function showAddModal(mode) {
   document.getElementById('leverage-fields').style.display   = perp ? 'block' : 'none';
   document.getElementById('fund-from-cash-row').style.display = perp ? 'none' : 'block';
   // Physical assets have no ticker, units, live price, targets, price-source IDs or thesis.
-  // Skins have units (quantity) and a live price, but from Steam - not a ticker or an ID.
+  // Skins have units (quantity) but no ticker or price-source ID - the owner keeps the price up to date.
   const hideNoTicker = physical || skin || option ? 'none' : '';
   document.getElementById('f-ticker-group').style.display     = hideNoTicker;
   document.getElementById('f-units-group').style.display      = physical ? 'none' : '';
@@ -5756,7 +5879,7 @@ function showAddModal(mode) {
   document.getElementById('lbl-entry').innerHTML   = physical ? 'Purchase Price' + hint('optional — for gain/loss')
                                                    : skin     ? 'Buy Price (each)' : 'Avg Entry Price';
   document.getElementById('lbl-current').innerHTML = physical ? 'Current Value'
-                                                   : skin     ? 'Current Price' + hint('optional — auto from Steam') : 'Current Price';
+                                                   : skin     ? 'Current Price' + hint('optional — starts at buy price, update it yourself') : 'Current Price';
   document.getElementById('lbl-units').textContent = skin ? 'Quantity' : 'Units / Amount Held';
   document.getElementById('f-name').placeholder    = physical ? 'e.g. Tesla Model 3' : skin ? 'e.g. AK-47 | Redline' : 'e.g. Bitcoin';
   const secSel = document.getElementById('f-sector-select');
@@ -5765,14 +5888,12 @@ function showAddModal(mode) {
   document.getElementById('f-sector').style.display = 'none';
   document.getElementById('f-sector').placeholder  = physical ? 'e.g. Vehicle, Real Estate' : 'e.g. Crypto, Technology';
   document.getElementById('f-entry').placeholder   = physical || skin || option ? 'what you paid' : 'e.g. 45000';
-  document.getElementById('f-current').placeholder = physical ? 'e.g. 50000' : skin ? 'auto' : 'e.g. 95000';
+  document.getElementById('f-current').placeholder = physical ? 'e.g. 50000' : skin ? 'what it sells for now' : 'e.g. 95000';
   if (skin) {
     document.getElementById('f-units').value    = '1';
     document.getElementById('f-exterior').value = 'Field-Tested';
     document.getElementById('f-variant').value  = '';
     document.getElementById('f-float').value    = '';
-    document.getElementById('f-steam').value    = '';
-    _csMainSteamTouched = false;
   }
   if (option) {
     const us = document.getElementById('f-opt-underlying'); if (!us.value) us.value = 'SOL';
@@ -5786,6 +5907,7 @@ function showAddModal(mode) {
   } else {
     _optLoadSeq++; // drop any Derive answer still on its way for an earlier option form
   }
+  resetCoinLookup('f-');
   setAddDirection('long');
   document.getElementById('addModal').classList.add('open');
   // populate cash funding dropdown with current balances
@@ -5804,7 +5926,7 @@ function showAddModal(mode) {
 
 function hideAddModal() {
   document.getElementById('addModal').classList.remove('open');
-  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-invalidation','f-thesis','f-margin','f-coingecko','f-yahoo','f-float','f-steam'].forEach(id => {
+  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-invalidation','f-thesis','f-margin','f-coingecko','f-yahoo','f-float'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-currency').value = 'USD';
@@ -5884,12 +6006,10 @@ function readSkinForm() {
   if (isNaN(entry) || entry <= 0) return { error: 'Enter what you paid per item.' };
   const float = parseCsFloat(val('f-float'));
   if (float !== null && !(float >= 0 && float <= 1)) return { error: 'Float must be between 0 and 1.' };
-  const exterior = val('f-exterior'), variant = val('f-variant');
   const current  = parseUserNumber(val('f-current'));
-  return { name, units, entry, float, exterior, variant,
-           current: current > 0 ? current : null, // null = keep / wait for Steam
-           currency: val('f-currency') || 'USD',
-           marketHashName: val('f-steam').trim() || csMarketName(name, exterior, variant) };
+  return { name, units, entry, float, exterior: val('f-exterior'), variant: val('f-variant'),
+           current: current > 0 ? current : null, // null = keep the last price (a new skin starts at cost)
+           currency: val('f-currency') || 'USD' };
 }
 
 function submitSkinAsset() {
@@ -5901,7 +6021,7 @@ function submitSkinAsset() {
   portfolio.push({ name: f.name, ticker, sector: 'CS Skins', units: f.units, entryPrice: f.entry, currentPrice: f.current || f.entry,
     targetPrice: null, invalidationPrice: null, currency: f.currency, color, bg, thesis: '', leveraged: false, marginUSD: null,
     showThesis: false, coingeckoId: null, yahooTicker: null, direction: null, hasCostBasis: true,
-    skin: true, exterior: f.exterior, variant: f.variant, float: f.float, marketHashName: f.marketHashName,
+    skin: true, exterior: f.exterior, variant: f.variant, float: f.float,
     openedDate: today(), posId: nextPosId++ });
 
   const fundCashId = parseInt(document.getElementById('f-fund-cash').value);
@@ -5917,7 +6037,6 @@ function submitSkinAsset() {
   saveState();
   hideAddModal();
   renderAll();
-  fetchSteamPrices();
 }
 
 // ── OPTIONS (Derive.xyz) ─────────────────────────────────────
@@ -6089,7 +6208,7 @@ function optionSub(p) {
 // + expiry returns every strike), Derive's settlement price for expired ones. Runs on load and on
 // the 60s tick through fetchPrices. A leg Derive did not price leaves the row at its last value.
 // A call made while a round is running asks it to go once more (an option added mid-round would
-// otherwise wait for the next tick), and resolves when that has happened - same as the Steam fetcher.
+// otherwise wait for the next tick), and resolves when that has happened.
 let _optRun = null, _optAgain = false;
 function fetchOptionPrices() {
   if (_optRun) { _optAgain = true; return _optRun; }
@@ -6513,9 +6632,6 @@ function showEditModal(posId) {
     set('f-exterior', p.exterior || '');
     set('f-variant', p.variant || '');
     set('f-float', p.float);
-    set('f-steam', p.marketHashName);
-    // A Steam name that differs from what the fields would build was typed by hand - keep it.
-    _csMainSteamTouched = (p.marketHashName || '') !== csMarketName(p.name, p.exterior, p.variant);
   } else if (p.option) {
     set('f-units', p.units);
     set('f-opt-underlying', p.underlying);
@@ -6537,6 +6653,13 @@ function showEditModal(posId) {
     set('f-yahoo', p.yahooTicker);
     set('f-thesis', p.thesis || '');
     document.getElementById('f-show-thesis').checked = !!p.showThesis;
+    // A coin that is not updating: look its ticker up, so the form offers the right ID.
+    const warn = priceWarnFor(p);
+    if (warn && !p.yahooTicker) {
+      _cgStored['f-'] = _cgAuto['f-'] = p.coingeckoId || '';
+      document.getElementById('f-cg-hint').textContent = warn;
+      runCoinLookup('f-');
+    }
   }
   if (p.leveraged) {
     setAddDirection(p.direction === 'short' ? 'short' : 'long');
@@ -6577,12 +6700,10 @@ function submitEditAsset() {
   } else if (p.skin) {
     const f = readSkinForm();
     if (f.error) { err.textContent = f.error; return; }
-    const renamed = f.marketHashName !== p.marketHashName;
     pushUndo(`edit ${p.name}`);
     Object.assign(p, { name: f.name, units: f.units, entryPrice: f.entry, currency: f.currency,
-      exterior: f.exterior, variant: f.variant, float: f.float, marketHashName: f.marketHashName });
+      exterior: f.exterior, variant: f.variant, float: f.float });
     if (f.current) p.currentPrice = f.current;
-    if (renamed) fetchSteamPrices(); // a different item - price it now (async, lands after the save below)
   } else if (p.option) {
     const f = readOptionForm();
     if (f.error) { err.textContent = f.error; return; }
@@ -6622,8 +6743,11 @@ function submitEditAsset() {
     p.currency          = currency;
     p.targetPrice       = (!isNaN(targetRaw) && targetRaw > 0) ? targetRaw : null;
     p.invalidationPrice = (!isNaN(invRaw)    && invRaw    > 0) ? invRaw    : null;
+    const oldSource     = `${p.coingeckoId || ''}|${p.yahooTicker || ''}`;
     p.coingeckoId       = val('f-coingecko').trim().toLowerCase() || (KNOWN_PRICE_SOURCES[ticker]?.coingeckoId) || null;
     p.yahooTicker       = val('f-yahoo').trim().toUpperCase()     || (KNOWN_PRICE_SOURCES[ticker]?.yahooTicker) || null;
+    // A new price source gets a fresh chance - the next price tick decides whether it works.
+    if (`${p.coingeckoId || ''}|${p.yahooTicker || ''}` !== oldSource) setPriceWarn('p' + p.posId, null);
     p.thesis            = val('f-thesis').trim();
     p.showThesis        = document.getElementById('f-show-thesis').checked;
     if (p.leveraged) { p.marginUSD = margin; p.direction = _addDirection; }
@@ -8282,9 +8406,10 @@ function renderPrivateAssets() {
       </div>`;
       pnlCell = '<span style="color:var(--text3)">—</span>';
     }
-    const sub = a.category === 'CS Skins' ? csSkinDetail(a) : '';
+    const sub  = a.category === 'CS Skins' ? csSkinDetail(a) : '';
+    const warn = privatePriceWarnFor(a);
     return `<tr>
-      <td style="font-weight:600">${escHtml(a.name)}${sub ? `<div class="private-sub">${escHtml(sub)}</div>` : ''}</td>
+      <td style="font-weight:600">${escHtml(a.name)}${sub ? `<div class="private-sub">${escHtml(sub)}</div>` : ''}${warn ? `<div class="private-sub">${priceWarnBadge(warn)}</div>` : ''}</td>
       <td><span class="private-cat-badge">${escHtml(a.category)}</span></td>
       <td class="right">${valueCell}</td>
       <td class="right">${fmtPriv(usd)}</td>
@@ -8351,44 +8476,15 @@ function isTrackedPrivate(a) {
 }
 
 // ── CS SKINS ──
-// A skin is a tracked holding (quantity × price) priced off the Steam Community Market, which
-// identifies an item by its exact "market hash name": [★ ][StatTrak™ |Souvenir ]Name[ (Exterior)].
-// The star marks knives and gloves; the exterior is left off for things with no wear (cases,
-// stickers, agents, vanilla knives). Checked against live Steam responses 2026-09-11.
+// A skin is a tracked holding (quantity × price). The price is the owner's own number - nothing
+// fetches it. (Steam pricing needed a public proxy that went down; the owner chose manual prices
+// on 2026-09-12.) Exterior, StatTrak/Souvenir and float are shown under the name.
 const CS_EXTERIORS = [ // float ranges, [min, max)
   ['Factory New', 0.07], ['Minimal Wear', 0.15], ['Field-Tested', 0.38], ['Well-Worn', 0.45], ['Battle-Scarred', 1.0001],
-];
-const CS_STAR_ITEMS = [
-  'Bayonet', 'Bowie Knife', 'Butterfly Knife', 'Classic Knife', 'Falchion Knife', 'Flip Knife', 'Gut Knife',
-  'Huntsman Knife', 'Karambit', 'Kukri Knife', 'M9 Bayonet', 'Navaja Knife', 'Nomad Knife', 'Paracord Knife',
-  'Shadow Daggers', 'Skeleton Knife', 'Stiletto Knife', 'Survival Knife', 'Talon Knife', 'Ursus Knife',
-  'Bloodhound Gloves', 'Broken Fang Gloves', 'Driver Gloves', 'Hand Wraps', 'Hydra Gloves', 'Moto Gloves',
-  'Specialist Gloves', 'Sport Gloves',
 ];
 function csExteriorFromFloat(f) {
   if (typeof f !== 'number' || !(f >= 0 && f <= 1)) return null;
   return CS_EXTERIORS.find(([, max]) => f < max)[0];
-}
-function csMarketName(name, exterior, variant) {
-  // Tolerate a name typed the way Steam shows it, so nothing ends up doubled.
-  let base = (name || '').trim()
-    .replace(/^★\s*/, '')
-    .replace(/^(StatTrak™?|Souvenir)\s+/i, '')
-    .replace(/\s*\((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)\s*$/i, '');
-  if (!base) return '';
-  const star = CS_STAR_ITEMS.some(t => base === t || base.startsWith(t + ' |'));
-  const v = variant === 'Souvenir' && star ? '' : (variant ? variant + ' ' : ''); // no souvenir knives
-  return (star ? '★ ' : '') + v + base + (exterior ? ` (${exterior})` : '');
-}
-// Steam's priceoverview answer -> USD per item, or null. Median of recent sales first (what
-// things actually sold for), cheapest listing as the fallback. Items over Steam's ~$2,000 cap
-// come back as {success:true} with no prices at all.
-function steamPriceUSD(data) {
-  if (!data || !data.success) return null;
-  const raw = data.median_price || data.lowest_price;
-  if (!raw) return null;
-  const v = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
-  return isFinite(v) && v > 0 ? v : null;
 }
 // "StatTrak™ · Field-Tested · 0.2134" under the row name.
 function csSkinDetail(a) {
@@ -8400,30 +8496,15 @@ function parseCsFloat(raw) {
   const s = String(raw || '').trim().replace(',', '.');
   return s ? Number(s) : null;
 }
-// The same five skin inputs live in two modals: the Private tab's ('pa-name', 'pa-exterior', ...)
-// and the main add modal's ('f-name', 'f-exterior', ...). These take the id prefix.
-function csFillSteamName(px) {
-  const g = id => document.getElementById(px + id);
-  g('steam').value = csMarketName(g('name').value, g('exterior').value, g('variant').value);
-}
+// The same skin inputs live in two modals: the Private tab's ('pa-float', 'pa-exterior', ...)
+// and the main add modal's ('f-float', 'f-exterior', ...). This takes the id prefix.
 function csFloatToExterior(px) {
   const ext = csExteriorFromFloat(parseCsFloat(document.getElementById(px + 'float').value));
   if (ext) document.getElementById(px + 'exterior').value = ext;
   return !!ext;
 }
-// A Steam name field typed in by hand stops auto-filling, one flag per modal.
-let _csSteamTouched = false;     // Private tab modal
-let _csMainSteamTouched = false; // main add modal
-function onPrivateCsInput() {
-  if (document.getElementById('pa-category').value !== 'CS Skins' || _csSteamTouched) return;
-  csFillSteamName('pa-');
-}
-function onPrivateFloatInput() { if (csFloatToExterior('pa-')) onPrivateCsInput(); }
-function onMainCsInput() {
-  if (_addMode !== 'skin' || _csMainSteamTouched) return;
-  csFillSteamName('f-');
-}
-function onMainFloatInput() { if (csFloatToExterior('f-')) onMainCsInput(); }
+function onPrivateFloatInput() { csFloatToExterior('pa-'); }
+function onMainFloatInput()    { csFloatToExterior('f-'); }
 
 function onPrivateCategoryChange() {
   const cat    = document.getElementById('pa-category').value;
@@ -8434,36 +8515,37 @@ function onPrivateCategoryChange() {
   document.getElementById('pa-tracked-fields').style.display = tracked ? '' : 'none';
   document.getElementById('pa-manual-fields').style.display  = tracked ? 'none' : '';
   // Crypto prices come from CoinGecko in USD; stocks come from Yahoo in the exchange's native currency;
-  // skins come from Steam in USD and are converted into whatever currency the price is kept in.
+  // skins are priced by hand, in whichever currency the owner picks.
   document.getElementById('pa-tcurrency-group').style.display = stock || skin ? '' : 'none';
   document.getElementById('pa-coingecko-group').style.display = crypto ? '' : 'none';
   document.getElementById('pa-yahoo-group').style.display     = stock  ? '' : 'none';
-  document.getElementById('pa-steam-group').style.display     = skin   ? '' : 'none';
   document.getElementById('pa-cs-fields').style.display       = skin   ? 'grid' : 'none';
   document.getElementById('pa-float-group').style.display     = skin   ? '' : 'none';
   document.getElementById('pa-ticker-group').style.display    = skin   ? 'none' : '';
   document.getElementById('pa-units-label').textContent       = skin   ? 'Quantity' : 'Units';
   document.getElementById('pa-entry-label').textContent       = skin   ? 'Buy Price (each)' : 'Avg Buy Price';
   document.getElementById('pa-name').placeholder              = skin   ? 'e.g. AK-47 | Redline' : 'e.g. Apartment';
+  document.getElementById('pa-current-hint').textContent      = skin   ? 'optional — starts at buy price, update it yourself' : 'optional — auto-fetched';
+  document.getElementById('pa-current').placeholder           = skin   ? 'what it sells for now' : 'auto';
   if (skin && !document.getElementById('pa-units').value) document.getElementById('pa-units').value = '1';
   if (crypto) document.getElementById('pa-tcurrency').value = 'USD';
   else if (stock || skin) document.getElementById('pa-tcurrency').value = homeCurrency;
-  onPrivateCsInput();
 }
 function onPrivateTickerInput() {
   const ticker = cleanCode(document.getElementById('pa-ticker').value.trim().toUpperCase());
   const known = KNOWN_PRICE_SOURCES[ticker];
-  if (known?.coingeckoId) document.getElementById('pa-coingecko').value = known.coingeckoId;
+  if (known?.coingeckoId) document.getElementById('pa-coingecko').value = _cgAuto['pa-'] = known.coingeckoId;
   if (known?.yahooTicker) document.getElementById('pa-yahoo').value     = known.yahooTicker;
+  scheduleCoinLookup('pa-'); // any other coin: find its id on CoinGecko
 }
 
 function showAddPrivateAssetModal() {
-  ['pa-name','pa-ticker','pa-coingecko','pa-yahoo','pa-entry','pa-current','pa-float','pa-steam'].forEach(id => document.getElementById(id).value = '');
+  ['pa-name','pa-ticker','pa-coingecko','pa-yahoo','pa-entry','pa-current','pa-float'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('pa-value').value = '';
   document.getElementById('pa-units').value = '';
   document.getElementById('pa-exterior').value = 'Field-Tested';
   document.getElementById('pa-variant').value = '';
-  _csSteamTouched = false;
+  resetCoinLookup('pa-');
   document.getElementById('pa-error').textContent = '';
   document.getElementById('pa-category').value = 'Real Estate';
   document.getElementById('pa-currency').value = homeCurrency;
@@ -8488,7 +8570,6 @@ function submitPrivateAsset() {
     if (float !== null && !(float >= 0 && float <= 1)) return err('Float must be between 0 and 1.');
     const exterior = document.getElementById('pa-exterior').value;
     const variant  = document.getElementById('pa-variant').value;
-    const marketHashName = document.getElementById('pa-steam').value.trim() || csMarketName(name, exterior, variant);
     const currency = document.getElementById('pa-tcurrency').value || 'USD';
     const entryRaw = parseUserNumber(document.getElementById('pa-entry').value);
     const hasCostBasis = entryRaw > 0;
@@ -8497,7 +8578,7 @@ function submitPrivateAsset() {
     const currentPrice = curRaw > 0 ? curRaw : entryPrice;
     pushUndo(`add ${name}`);
     privateAssets.push({ id: nextPrivateAssetId++, name, category, ticker: '', units, entryPrice, currentPrice, currency, hasCostBasis,
-                         exterior, variant, float, marketHashName });
+                         exterior, variant, float });
   } else if (category === 'Crypto' || category === 'Stocks / Shares') {
     const crypto      = category === 'Crypto';
     const ticker      = cleanCode(document.getElementById('pa-ticker').value.trim().toUpperCase());
@@ -8538,22 +8619,23 @@ function removePrivateAsset(id) {
   renderPrivateTab();
 }
 
-const STEAM_FETCH_GAP_MS = 2000; // Steam's market endpoints allow roughly 20 calls a minute
 async function fetchPrivateCryptoPrices() {
   let updated = false;
 
-  // Crypto — batch via CoinGecko (USD)
-  const cryptoAssets = privateAssets.filter(a => a.category === 'Crypto' && a.coingeckoId);
+  // Crypto — batch via CoinGecko (USD), ids through privateCgId (the shortcut list wins)
+  const cryptoAssets = privateAssets.filter(a => a.category === 'Crypto' && privateCgId(a));
   if (cryptoAssets.length) {
-    const ids = [...new Set(cryptoAssets.map(a => a.coingeckoId))].join(',');
+    const ids = [...new Set(cryptoAssets.map(privateCgId))].join(',');
     try {
       const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
       const data = await res.json();
+      const answered = data && typeof data === 'object' && !data.status; // { status } = rate limited
       cryptoAssets.forEach(a => {
-        const price = data[a.coingeckoId]?.usd;
-        if (typeof price === 'number' && isFinite(price) && price > 0) { a.currentPrice = price; updated = true; }
+        const price = data[privateCgId(a)]?.usd;
+        if (typeof price === 'number' && isFinite(price) && price > 0) { a.currentPrice = price; updated = true; setPriceWarn('a' + a.id, null); }
+        else if (answered) setPriceWarn('a' + a.id, cgUnknownMsg(privateCgId(a), false));
       });
-    } catch(e) { /* silent fail — keep last known price */ }
+    } catch(e) { /* offline — keep the last price, flag nothing */ }
   }
 
   // Stocks / Shares — Yahoo via CORS proxy, one call per holding (native currency)
@@ -8568,54 +8650,13 @@ async function fetchPrivateCryptoPrices() {
       const price = data.chart.result[0].meta.regularMarketPrice;
       if (price && typeof price === 'number' && isFinite(price) && price > 0) {
         const ratio = a.currentPrice > 0 ? price / a.currentPrice : 1;
-        if (ratio < 10 && ratio > 0.1) { a.currentPrice = price; updated = true; }
+        if (ratio < 10 && ratio > 0.1) { a.currentPrice = price; updated = true; setPriceWarn('a' + a.id, null); }
       }
-    } catch(e) { /* silent fail — keep last known price */ }
+    } catch(e) { setPriceWarn('a' + a.id, YAHOO_FAIL_MSG); }
   }
   if (updated) { saveState(); renderAllSafe(); }
-  await fetchSteamPrices();
-}
-
-// Every CS skin, wherever it lives: main-portfolio rows (p.skin) and Private-tab holdings.
-function allSkinHoldings() {
-  return [...portfolio.filter(p => p.skin), ...privateAssets.filter(a => a.category === 'CS Skins')]
-    .filter(h => h.marketHashName);
-}
-
-// CS Skins — Steam Community Market via the same proxy as Yahoo (Steam sends no CORS headers).
-// Steam throttles hard, so one request per distinct item across both tabs, spaced out, and only
-// on page load / after a skin is added or renamed - never on the 60s tick. Asked in USD and
-// converted into each holding's own currency. A call made while a run is going just asks that
-// run to go round once more (and resolves when it has), so two adds in a row never double
-// the request rate.
-let _steamRun = null, _steamAgain = false;
-function fetchSteamPrices() {
-  if (_steamRun) { _steamAgain = true; return _steamRun; }
-  // Cleared in .finally, never inside the run: with no skins the run finishes synchronously,
-  // and clearing there would happen before this assignment and leave a dead promise behind.
-  _steamRun = steamPriceRounds().finally(() => { _steamRun = null; });
-  return _steamRun;
-}
-async function steamPriceRounds() {
-  do {
-    _steamAgain = false;
-    const steamUSD = {};
-    for (const name of [...new Set(allSkinHoldings().map(h => h.marketHashName))]) {
-      try {
-        const url   = `https://steamcommunity.com/market/priceoverview/?appid=730&currency=1&market_hash_name=${encodeURIComponent(name)}`;
-        const res   = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-        const outer = await res.json();
-        steamUSD[name] = steamPriceUSD(JSON.parse(outer.contents));
-        await new Promise(r => setTimeout(r, STEAM_FETCH_GAP_MS));
-      } catch(e) { /* silent fail — keep last known price */ }
-    }
-    let updated = false;
-    allSkinHoldings().forEach(h => {
-      const usd = steamUSD[h.marketHashName];
-      if (usd) { h.currentPrice = usd / (fxRates[(h.currency || 'USD').toUpperCase()] ?? 1); updated = true; }
-    });
-    if (updated) { pricesLastUpdated = new Date(); saveState(); renderAllSafe(); }
-  } while (_steamAgain);
+  else if (_priceWarnDirty) renderAllSafe(); // only a "not updating" flag changed
+  _priceWarnDirty = false;
 }
 
 let _editingPrivateCashId = null;
@@ -8705,7 +8746,7 @@ function updatePrivateAssetUnits(id, rawVal) {
 }
 function updatePrivateAssetPrice(id, rawVal) {
   const raw = rawVal.trim();
-  if (raw === '') return; // left blank in edit mode — leave the auto-fetched price alone
+  if (raw === '') return; // left blank in edit mode — leave the price alone
   const val = parseFloat(raw.replace(/[^0-9.-]/g, ''));
   if (isNaN(val) || val <= 0) return;
   const asset = privateAssets.find(a => a.id === id);
