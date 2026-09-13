@@ -1041,6 +1041,26 @@ tr:hover .pencil-btn { opacity: 1; }
   display: flex; align-items: center; gap: 6px; white-space: nowrap;
 }
 .add-asset-btn:hover { background: rgba(0,212,255,0.2); }
+/* "+ Add ▾" on the Holdings header: one button, the five position types in a menu */
+.add-menu { position: relative; }
+.add-menu-caret { transition: transform 0.15s; }
+.add-menu.open .add-menu-caret { transform: rotate(180deg); }
+.add-menu-list {
+  display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 500;
+  width: 330px; max-width: calc(100vw - 32px); padding: 5px;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.add-menu.open .add-menu-list { display: block; }
+.add-menu-item {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  background: none; border: 0; border-radius: 6px; padding: 8px 10px; cursor: pointer;
+  color: var(--cyan); font-family: var(--sans);
+}
+.add-menu-item svg { flex-shrink: 0; }
+.add-menu-item:hover, .add-menu-item:focus-visible { background: var(--bghov); outline: none; }
+.add-menu-item b { display: block; color: var(--text); font-size: 12.5px; font-weight: 600; }
+.add-menu-item small { display: block; color: var(--text3); font-size: 11px; margin-top: 2px; }
 
 /* ── PRIVATE TAB ── */
 .private-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -1255,26 +1275,35 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div class="section-title">Holdings</div>
     <div style="display:flex;align-items:center;gap:12px">
       <div style="font-size:11px;color:var(--text3)">Sort by column · <b style="color:var(--text2)">Edit</b> to change prices, units &amp; cash</div>
-      <button class="add-asset-btn" onclick="showAddModal()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Asset
-      </button>
-      <button class="add-asset-btn" onclick="showAddModal('perp')" title="Add a leveraged long or short position (futures / perp)">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        Add Leverage Position
-      </button>
-      <button class="add-asset-btn" onclick="showAddModal('physical')" title="Add a physical asset — car, real estate, valuables (no ticker or live price; just what it's worth)">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
-        Add Physical Asset
-      </button>
-      <button class="add-asset-btn" onclick="showAddModal('skin')" title="Add a Counter-Strike skin, knife, gloves, case or sticker — you set its price yourself">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><line x1="12" y1="1" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="23"/><line x1="1" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="23" y2="12"/></svg>
-        Add CS Skin
-      </button>
-      <button class="add-asset-btn" onclick="showAddModal('option')" title="Add an options position held on Derive.xyz — calls, puts and spreads, priced live from Derive">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 17 9 17 15 7 21 7"/></svg>
-        Add Option
-      </button>
+      <div class="add-menu" id="addMenu">
+        <button class="add-asset-btn" id="addMenuBtn" onclick="toggleAddMenu()" aria-haspopup="true" aria-expanded="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add
+          <svg class="add-menu-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="add-menu-list" role="menu">
+          <button class="add-menu-item" role="menuitem" onclick="pickAddType('spot')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span><b>Asset</b><small>Crypto or stock, priced live</small></span>
+          </button>
+          <button class="add-menu-item" role="menuitem" onclick="pickAddType('perp')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span><b>Leverage Position</b><small>Long or short with leverage (futures / perp)</small></span>
+          </button>
+          <button class="add-menu-item" role="menuitem" onclick="pickAddType('physical')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+            <span><b>Physical Asset</b><small>Car, property, valuables — you set the value</small></span>
+          </button>
+          <button class="add-menu-item" role="menuitem" onclick="pickAddType('skin')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><line x1="12" y1="1" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="23"/><line x1="1" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="23" y2="12"/></svg>
+            <span><b>CS Skin</b><small>Skins, knives, gloves, cases — you set the price</small></span>
+          </button>
+          <button class="add-menu-item" role="menuitem" onclick="pickAddType('option')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 17 9 17 15 7 21 7"/></svg>
+            <span><b>Option</b><small>Calls, puts and spreads on Derive, priced live</small></span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
   <div class="table-wrap" id="tableWrap">
@@ -3940,6 +3969,26 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     redoLast();
   }
+});
+
+// ── "+ Add ▾" menu (Holdings header) ────────────────────────────────────────
+// open: true/false forces a state; left out, it flips.
+function toggleAddMenu(open) {
+  const menu = document.getElementById('addMenu');
+  const show = open === undefined ? !menu.classList.contains('open') : open;
+  menu.classList.toggle('open', show);
+  document.getElementById('addMenuBtn').setAttribute('aria-expanded', show ? 'true' : 'false');
+}
+function pickAddType(mode) {
+  toggleAddMenu(false);
+  showAddModal(mode);
+}
+// Close on a click anywhere outside the menu, or on Escape.
+document.addEventListener('click', e => {
+  if (!e.target.closest?.('#addMenu')) toggleAddMenu(false);
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') toggleAddMenu(false);
 });
 
 // ── FX ───────────────────────────────────────────────────────────────────────
