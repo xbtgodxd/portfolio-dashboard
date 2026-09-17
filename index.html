@@ -280,6 +280,9 @@ th {
 th:hover { color: var(--cyan); }
 th.sorted { color: var(--cyan); }
 th.right, td.right { text-align: right; }
+/* Holdings has 12 columns - 16px side padding made it wider than a 1440px laptop, hiding Close/edit */
+#holdingsTable th, #holdingsTable td { padding-left: 10px; padding-right: 10px; }
+@media (max-width: 1300px) { #holdingsTable th, #holdingsTable td { padding-left: 6px; padding-right: 6px; } }
 td {
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
@@ -711,6 +714,20 @@ textarea.update-text {
 @media (max-width: 900px) {
   .charts-grid { grid-template-columns: 1fr; }
   .main { padding: 20px 16px 40px; }
+  /* The header buttons used to sit on one line, forcing the whole page ~1170px wide on a phone */
+  .header { height: auto; flex-wrap: wrap; gap: 10px; padding: 10px 16px; }
+  .header-right { flex-wrap: wrap; gap: 8px; }
+  .header-time { display: none; }
+}
+@media (max-width: 600px) {
+  .summary-grid { grid-template-columns: 1fr 1fr; }
+  .form-row { grid-template-columns: 1fr; }
+  .modal { padding: 20px; }
+  .tab-nav { overflow-x: auto; scrollbar-width: none; }
+  .tab-btn { padding: 10px 12px; white-space: nowrap; }
+  .section-header > div { flex-wrap: wrap; }
+  .charts-grid > * { min-width: 0; } /* grid items otherwise grow to fit the chart buttons */
+  .chart-card { padding: 16px; }
 }
 
 /* ── MODAL ── */
@@ -1033,6 +1050,8 @@ tr:hover .trash-btn { opacity: 1; }
   opacity: 0;
 }
 tr:hover .pencil-btn { opacity: 1; }
+.trash-btn:focus-visible, .pencil-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .trash-btn, .pencil-btn { opacity: 1; } } /* phones/tablets have no hover */
 .pencil-btn:hover { color: var(--cyan); background: var(--cyand); }
 .add-asset-btn {
   background: var(--cyand); border: 1px solid var(--cyan); color: var(--cyan);
@@ -1290,6 +1309,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             <span><b>Leverage Position</b><small>Long or short with leverage (futures / perp)</small></span>
           </button>
+          <button class="add-menu-item" role="menuitem" onclick="pickAddType('option')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 17 9 17 15 7 21 7"/></svg>
+            <span><b>Option</b><small>Calls, puts and spreads on Derive, priced live</small></span>
+          </button>
           <button class="add-menu-item" role="menuitem" onclick="pickAddType('physical')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
             <span><b>Physical Asset</b><small>Car, property, valuables — you set the value</small></span>
@@ -1298,9 +1321,9 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><line x1="12" y1="1" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="23"/><line x1="1" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="23" y2="12"/></svg>
             <span><b>CS Skin</b><small>Skins, knives, gloves, cases — you set the price</small></span>
           </button>
-          <button class="add-menu-item" role="menuitem" onclick="pickAddType('option')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 17 9 17 15 7 21 7"/></svg>
-            <span><b>Option</b><small>Calls, puts and spreads on Derive, priced live</small></span>
+          <button class="add-menu-item" role="menuitem" onclick="pickAddType('pokemon')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><circle cx="12" cy="12" r="2.5"/></svg>
+            <span><b>Pokémon Card</b><small>Raw, graded or sealed — you set the price</small></span>
           </button>
         </div>
       </div>
@@ -1924,6 +1947,66 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         </div>
       </div>
     </div>
+    <!-- POKÉMON CARD FIELDS (pokemon mode only) — priced by hand, like skins -->
+    <div id="f-poke-fields" style="display:none">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-input" id="f-poke-kind" onchange="onPokeKindChange()">
+            <option value="raw">Raw card</option>
+            <option value="graded">Graded card (slab)</option>
+            <option value="sealed">Sealed product</option>
+          </select>
+        </div>
+        <div class="form-group" id="f-poke-condition-group">
+          <label class="form-label">Condition</label>
+          <select class="form-input" id="f-poke-condition">
+            <option value="Near Mint">Near Mint</option>
+            <option value="Lightly Played">Lightly Played</option>
+            <option value="Moderately Played">Moderately Played</option>
+            <option value="Heavily Played">Heavily Played</option>
+            <option value="Damaged">Damaged</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row" id="f-poke-grade-row" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Grading Company</label>
+          <select class="form-input" id="f-poke-grader">
+            <option value="PSA">PSA</option>
+            <option value="BGS">BGS (Beckett)</option>
+            <option value="CGC">CGC</option>
+            <option value="SGC">SGC</option>
+            <option value="TAG">TAG</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Grade</label>
+          <input class="form-input" id="f-poke-grade" type="text" inputmode="decimal" placeholder="e.g. 10 or 9.5" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Set <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+          <input class="form-input" id="f-poke-set" placeholder="e.g. Base Set, 151, Evolving Skies" />
+        </div>
+        <div class="form-group" id="f-poke-number-group">
+          <label class="form-label">Card # <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
+          <input class="form-input" id="f-poke-number" placeholder="e.g. 4/102" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Language</label>
+          <select class="form-input" id="f-poke-language">
+            <option value="English">English</option>
+            <option value="Japanese">Japanese</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+    </div>
     <!-- OPTION FIELDS (option mode only) — contracts listed on Derive.xyz, priced from Derive's public feed -->
     <div id="f-option-fields" style="display:none">
       <div class="form-row">
@@ -2060,7 +2143,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       <div class="form-group" style="margin-bottom:10px">
         <label class="form-label">Margin / Collateral (USD)</label>
         <input class="form-input" id="f-margin" type="number" placeholder="e.g. 820" step="any" min="0" oninput="recalcPerpUnits()" />
-        <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:4px">Actual cash at risk. Position size = margin × leverage.</div>
+        <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:4px">Actual cash at risk. Position size = margin × leverage.<br>Margin is <b style="color:var(--text2)">not</b> added to net worth here — only the position's P&amp;L is. Keep the money in a cash entry (e.g. your exchange balance). To have that entry follow margin + P&amp;L live, link it to this position under <b style="color:var(--text2)">Edit</b> → cash.</div>
       </div>
       <div class="form-group" style="margin-bottom:4px">
         <label class="form-label">Leverage</label>
@@ -2108,6 +2191,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       <label class="form-label">Outcome <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
       <input class="form-input" id="closeOutcome" placeholder="e.g. Trendline broke, hit upper resistance" />
     </div>
+    <div style="font-size:11px;color:var(--text3);margin:-4px 0 12px;line-height:1.5">Your cash is not changed. Add what you got back to a cash entry yourself (<b style="color:var(--text2)">Edit</b> → cash, or <b style="color:var(--text2)">Add cash</b>).</div>
     <div class="form-error" id="closeError"></div>
     <div class="form-actions">
       <button class="btn-secondary" onclick="hideCloseModal()">Cancel</button>
@@ -2566,6 +2650,7 @@ const SECTOR_COLORS = {
   "Boat":            { color: "#1abc9c", bg: "rgba(26,188,156,0.12)"  },
   "Precious Metals": { color: "#d4af37", bg: "rgba(212,175,55,0.12)"  },
   "CS Skins":        { color: "#de9b35", bg: "rgba(222,155,53,0.12)"  }, // every "Add CS Skin" row
+  "Pokémon Cards":   { color: "#e3b505", bg: "rgba(227,181,5,0.12)"   }, // every "Add Pokémon Card" row
 };
 
 // -- CRYPTO SECTORS ----------------------------------------------------------
@@ -2849,7 +2934,7 @@ const SECTOR_RENAMES = {
 // The CoinGecko id a position actually prices off - KNOWN_PRICE_SOURCES wins over the
 // stored one, exactly as in fetchPrices().
 function resolvedCgId(p) {
-  if (!p || p.physical || p.skin || p.option) return null;
+  if (!p || p.physical || p.skin || p.pokemon || p.option) return null;
   const known = KNOWN_PRICE_SOURCES[(p.ticker || '').toUpperCase()];
   return (known && known.coingeckoId) || p.coingeckoId || null;
 }
@@ -2888,7 +2973,7 @@ const SECTOR_FETCH_GAP_MS = 6500;
 async function fetchCryptoSectors(force) {
   const ids = [];
   portfolio.forEach(p => {
-    if (p.physical || p.skin || p.option) return;
+    if (p.physical || p.skin || p.pokemon || p.option) return;
     if (!force && !isAutoSector(p.sector)) return;
     if (CURATED_SECTORS[(p.ticker || '').toUpperCase()]) return; // curated wins, no request
     const id = resolvedCgId(p);
@@ -3084,7 +3169,7 @@ function cgUnknownMsg(id, canEdit) {
   return `CoinGecko has no coin with the ID “${id}”` + (canEdit ? ' — fix it in Edit.' : ' — remove it and add it again; the add form now finds the ID from the ticker.');
 }
 function priceWarnFor(p) {
-  if (!p || p.physical || p.skin || p.option) return null;
+  if (!p || p.physical || p.skin || p.pokemon || p.option) return null;
   if (!resolvedCgId(p) && !p.yahooTicker) return 'No price source, so this price only changes when you edit it. Add a CoinGecko ID (crypto) or a Yahoo ticker (stocks) in Edit.';
   return _priceWarn['p' + p.posId] || null;
 }
@@ -3385,7 +3470,7 @@ function repaintFromPalette(savedVersion) {
 // An ordinary backup comes through unchanged - test-sanitize.js checks that, and the owner's
 // real backup was run through it on 2026-09-12 with zero differences.
 const SAFE_FREE_TEXT = new Set(['name', 'label', 'notes', 'thesis', 'defaultThesis', 'outcome', 'text', 'address',
-  'dashboardName', 'sector', 'marketHashName', 'exterior', 'variant', 'desc', 'title']);
+  'dashboardName', 'sector', 'marketHashName', 'exterior', 'variant', 'desc', 'title', 'pokeSet', 'pokeNumber']);
 const SAFE_ID_KEYS   = new Set(['id', 'posId', 'uid', 'linkedPerpId']);
 const SAFE_SKIP_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const SAFE_BAD_CHARS = /[<>"'`&\\]/g;
@@ -3401,7 +3486,7 @@ function cleanCode(s) { return String(s ?? '').replace(SAFE_BAD_CHARS, ''); }
 // needs a value and null where the app already copes with "none".
 const SAFE_NUM_KEYS = new Set(['units', 'entryPrice', 'currentPrice', 'closePrice', 'amount', 'amountUSD', 'value', 'price',
   'pnlUSD', 'totalPnlUsd', 'pnlPct', 'realizedPnl', 'marginUSD', 'targetPrice', 'invalidationPrice', 'float', 'strike',
-  'optIndex', 'optDelta', 'optMarkAt', 'optSettle', 'bankBalance', 'salary', 'dividend', 'expenses', 'tax', 'spent']);
+  'optIndex', 'optDelta', 'optMarkAt', 'optSettle', 'pokeGrade', 'bankBalance', 'salary', 'dividend', 'expenses', 'tax', 'spent']);
 const SAFE_REQUIRED_NUM = new Set(['units', 'entryPrice', 'currentPrice', 'amount', 'value']);
 
 function sanitizeValue(v, key) {
@@ -3554,6 +3639,9 @@ function buildStateJson() {
       hasCostBasis: p.hasCostBasis || false,
       // CS skins only - other rows stay exactly as they were
       ...(p.skin ? { skin: true, exterior: p.exterior || '', variant: p.variant || '', float: p.float ?? null } : {}),
+      // Pokémon cards only
+      ...(p.pokemon ? { pokemon: true, pokeKind: p.pokeKind || 'raw', pokeCondition: p.pokeCondition || '', pokeGrader: p.pokeGrader || '',
+                        pokeGrade: p.pokeGrade ?? null, pokeSet: p.pokeSet || '', pokeNumber: p.pokeNumber || '', pokeLanguage: p.pokeLanguage || '' } : {}),
       // Options only - the legs, and the last numbers Derive sent (so the row reads right offline)
       ...(p.option ? { option: true, underlying: p.underlying || '', expiry: p.expiry || '', optStrategy: p.optStrategy || '', legs: p.legs || [],
                        optIndex: p.optIndex ?? null, optDelta: p.optDelta ?? null, optMarkAt: p.optMarkAt ?? null, optSettle: p.optSettle ?? null } : {}),
@@ -4046,7 +4134,7 @@ async function fetchPrices() {
   // KNOWN_PRICE_SOURCES takes priority over whatever coingeckoId is stored (fixes stale/wrong IDs)
   const cgMap = {};
   portfolio.forEach(p => {
-    if (p.physical || p.skin || p.option) return; // skins are priced by hand, options off Derive
+    if (p.physical || p.skin || p.pokemon || p.option) return; // skins + cards are priced by hand, options off Derive
     const known = KNOWN_PRICE_SOURCES[p.ticker?.toUpperCase()];
     const cgId = (known?.coingeckoId) || p.coingeckoId;
     if (cgId) { p._resolvedCgId = cgId; cgMap[cgId] = true; }
@@ -4085,7 +4173,7 @@ async function fetchPrices() {
   // Binance cross-check — verify CoinGecko prices against Binance for tokens with a known USDT pair
   const bnMap = {}; // binanceTicker -> portfolio position
   portfolio.forEach(p => {
-    if (p.physical || p.skin || p.option) return;
+    if (p.physical || p.skin || p.pokemon || p.option) return;
     const known = KNOWN_PRICE_SOURCES[p.ticker?.toUpperCase()];
     if (known?.binanceTicker) bnMap[known.binanceTicker] = p;
   });
@@ -4120,7 +4208,7 @@ async function fetchPrices() {
   }
 
   // Yahoo Finance — via CORS proxy, one call per stock
-  const yahooPositions = portfolio.filter(p => p.yahooTicker && !p.skin && !p.option);
+  const yahooPositions = portfolio.filter(p => p.yahooTicker && !p.skin && !p.pokemon && !p.option);
   for (const p of yahooPositions) {
     try {
       const url   = `https://query1.finance.yahoo.com/v8/finance/chart/${p.yahooTicker}?interval=1d&range=1d`;
@@ -4560,7 +4648,7 @@ function renderTable(data) {
             ${editMode ? `onclick="cycleColor(${p.posId})" title="Click to change color"` : ''}>${escHtml(p.ticker.slice(0,4))}</div>
           <div${p.option ? ' class="asset-text-wrap"' : ''}>
             <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}">${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}</span>` : ''}${invalidationBreached(p) ? `<span style="color:var(--red);margin-left:5px;cursor:help" title="Invalidation level crossed (${fmtNative(p.invalidationPrice, p.currency)}) — check your thesis">⚠</span>` : ''}</div>
-            <div class="asset-ticker">${escHtml(p.skin ? (csSkinDetail(p) || p.ticker) : p.option ? optionDetail(p) : p.ticker)}${priceWarnBadge(priceWarnFor(p))}</div>
+            <div class="asset-ticker">${escHtml(p.skin ? (csSkinDetail(p) || p.ticker) : p.pokemon ? (pokemonDetail(p) || p.ticker) : p.option ? optionDetail(p) : p.ticker)}${priceWarnBadge(priceWarnFor(p))}</div>
           </div>
         </div>
       </td>
@@ -4614,7 +4702,7 @@ function renderTable(data) {
         <div class="pnl-cell">
           ${p.leveraged
             ? `<span class="pnl-pct ${p.pnlPctOnMargin >= 0 ? 'pos' : 'neg'}">${fmtPct(p.pnlPctOnMargin)}</span>
-               <span class="lev-sub">on margin · ${fmtPct(p.pnlPct)} notional</span>`
+               <span class="lev-sub">on margin</span><span class="lev-sub" style="margin-top:0">${fmtPct(p.pnlPct)} notional</span>`
             : `<span class="pnl-pct ${p.pnlPct >= 0 ? 'pos' : 'neg'}">${fmtPct(p.pnlPct)}</span>`
           }
         </div>
@@ -4630,7 +4718,7 @@ function renderTable(data) {
       <td class="right">
         <div class="bar-wrap" style="justify-content:flex-end">
           <span class="num" style="font-size:12px;color:var(--text2);min-width:36px;text-align:right">${allocPct.toFixed(1)}%</span>
-          <div class="alloc-bar" style="width:${Math.max(allocPct * 1.2, 2)}px"></div>
+          <div class="alloc-bar" style="width:${Math.max(Math.min(allocPct, 100) * 0.6, 2)}px"></div>
         </div>
       </td>
       <td style="text-align:right;width:100px;white-space:nowrap">
@@ -4706,9 +4794,9 @@ function showCloseModal(posId) {
   if (!p) return;
   _closingPosId = posId;
   // A skin's ticker is only a made-up row code - selling one reads better by its name.
-  document.getElementById('closeModalTitle').textContent = p.skin ? `Sell ${p.name}` : p.option ? `Close ${p.name}` : `Close ${p.ticker}`;
+  document.getElementById('closeModalTitle').textContent = p.skin || p.pokemon ? `Sell ${p.name}` : p.option ? `Close ${p.name}` : `Close ${p.ticker}`;
   document.getElementById('closeModalDesc').innerHTML =
-    `<strong>${p.skin ? `${p.units} × ${escHtml(p.name)}` : p.option ? escHtml(optionCount(p)) : `${fmtUnits(p.units)} ${escHtml(p.ticker)}`}</strong> · ${p.skin || p.option ? 'paid' : 'entry'} ${fmtNative(p.entryPrice, p.currency)}${p.option ? ' each' : ''}` +
+    `<strong>${p.skin || p.pokemon ? `${p.units} × ${escHtml(p.name)}` : p.option ? escHtml(optionCount(p)) : `${fmtUnits(p.units)} ${escHtml(p.ticker)}`}</strong> · ${p.skin || p.pokemon || p.option ? 'paid' : 'entry'} ${fmtNative(p.entryPrice, p.currency)}${p.option ? ' each' : ''}` +
     (p.realizedPnl ? ` · +${fmtUsd(p.realizedPnl)} already realized` : '') +
     (p.option ? `<br><span style="font-size:12px;color:var(--text3)">Close price = what one ${optionUnitWord(p)} is worth now${p.optSettle ? ` (settled at ${fmtOptUsd(p.optSettle)})` : ''}. Expired worthless = 0.</span>` : '');
   document.getElementById('closePrice').value = p.currentPrice.toFixed(p.currentPrice >= 1 || p.option ? 2 : 4);
@@ -5423,7 +5511,8 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedModalTitle').textContent = 'Lock in Realized P&L';
     document.getElementById('realizedModalDesc').innerHTML =
       `Reducing <strong>${p.ticker}</strong> from <strong>${fmtUnits(p.units)}</strong> → <strong>${fmtUnits(val)}</strong> units.<br>` +
-      `${fmtUnits(soldQty)} sold vs entry ${fmtPrice(p.entryPrice)} — enter your actual sell price below.`;
+      `${fmtUnits(soldQty)} sold vs entry ${fmtPrice(p.entryPrice)} — enter your actual sell price below.<br>` +
+      `<span style="font-size:11px;color:var(--text3)">Your cash is not changed. Add what you got back to a cash entry yourself.</span>`;
     document.getElementById('realizedInputLabel').textContent = 'Realized P&L to add (USD)';
     document.getElementById('realizedInputHint').textContent = 'Negative = realized loss. Zero = no change.';
     document.getElementById('realizedInput').value = gain.toFixed(2);
@@ -5907,13 +5996,14 @@ function recalcPerpUnits() {
 
 function showAddModal(mode) {
   _editPosId = null;
-  _addMode = ['perp', 'physical', 'skin', 'option'].includes(mode) ? mode : 'spot';
+  _addMode = ['perp', 'physical', 'skin', 'pokemon', 'option'].includes(mode) ? mode : 'spot';
   const perp     = _addMode === 'perp';
   const physical = _addMode === 'physical';
-  const skin     = _addMode === 'skin';
+  const poke     = _addMode === 'pokemon';
+  const skin     = _addMode === 'skin' || poke; // a card is laid out like a skin, only its detail fields differ
   const option   = _addMode === 'option';
-  document.getElementById('addModalTitle').textContent    = physical ? 'Add Physical Asset' : perp ? 'Add Leverage Position' : skin ? 'Add CS Skin' : option ? 'Add Option' : 'Add Asset';
-  document.getElementById('addModalSubmitBtn').textContent = physical ? 'Add Asset'          : perp ? 'Add Position'         : skin ? 'Add Skin'    : option ? 'Add Option' : 'Add Asset';
+  document.getElementById('addModalTitle').textContent    = physical ? 'Add Physical Asset' : perp ? 'Add Leverage Position' : poke ? 'Add Pokémon Card' : skin ? 'Add CS Skin' : option ? 'Add Option' : 'Add Asset';
+  document.getElementById('addModalSubmitBtn').textContent = physical ? 'Add Asset'          : perp ? 'Add Position'         : poke ? 'Add Card'         : skin ? 'Add Skin'    : option ? 'Add Option' : 'Add Asset';
   document.getElementById('leverage-fields').style.display   = perp ? 'block' : 'none';
   document.getElementById('fund-from-cash-row').style.display = perp ? 'none' : 'block';
   // Physical assets have no ticker, units, live price, targets, price-source IDs or thesis.
@@ -5927,7 +6017,8 @@ function showAddModal(mode) {
   document.getElementById('f-thesis-group').style.display     = hideNoTicker;
   document.getElementById('f-thesisboard-group').style.display = hideNoTicker;
   document.getElementById('f-sector-group').style.display     = skin || option ? 'none' : ''; // "CS Skins" / the underlying's sector
-  document.getElementById('f-skin-fields').style.display      = skin ? '' : 'none';
+  document.getElementById('f-skin-fields').style.display      = skin && !poke ? '' : 'none';
+  document.getElementById('f-poke-fields').style.display      = poke ? '' : 'none';
   document.getElementById('f-option-fields').style.display    = option ? '' : 'none';
   // An option's name, price and currency all come from Derive: USD, named after its legs.
   document.getElementById('f-name-group').style.display       = option ? 'none' : '';
@@ -5940,7 +6031,7 @@ function showAddModal(mode) {
   document.getElementById('lbl-current').innerHTML = physical ? 'Current Value'
                                                    : skin     ? 'Current Price' + hint('optional — starts at buy price, update it yourself') : 'Current Price';
   document.getElementById('lbl-units').textContent = skin ? 'Quantity' : 'Units / Amount Held';
-  document.getElementById('f-name').placeholder    = physical ? 'e.g. Tesla Model 3' : skin ? 'e.g. AK-47 | Redline' : 'e.g. Bitcoin';
+  document.getElementById('f-name').placeholder    = physical ? 'e.g. Tesla Model 3' : poke ? 'e.g. Charizard' : skin ? 'e.g. AK-47 | Redline' : 'e.g. Bitcoin';
   const secSel = document.getElementById('f-sector-select');
   secSel.innerHTML = sectorOptionsHtml(physical);
   secSel.value = '';
@@ -5953,6 +6044,14 @@ function showAddModal(mode) {
     document.getElementById('f-exterior').value = 'Field-Tested';
     document.getElementById('f-variant').value  = '';
     document.getElementById('f-float').value    = '';
+  }
+  if (poke) {
+    document.getElementById('f-poke-kind').value      = 'raw';
+    document.getElementById('f-poke-condition').value = 'Near Mint';
+    document.getElementById('f-poke-grader').value    = 'PSA';
+    document.getElementById('f-poke-language').value  = 'English';
+    ['f-poke-grade', 'f-poke-set', 'f-poke-number'].forEach(id => { document.getElementById(id).value = ''; });
+    onPokeKindChange();
   }
   if (option) {
     const us = document.getElementById('f-opt-underlying'); if (!us.value) us.value = 'SOL';
@@ -5985,7 +6084,7 @@ function showAddModal(mode) {
 
 function hideAddModal() {
   document.getElementById('addModal').classList.remove('open');
-  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-invalidation','f-thesis','f-margin','f-coingecko','f-yahoo','f-float'].forEach(id => {
+  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-invalidation','f-thesis','f-margin','f-coingecko','f-yahoo','f-float','f-poke-grade','f-poke-set','f-poke-number'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-currency').value = 'USD';
@@ -6071,16 +6170,58 @@ function readSkinForm() {
            currency: val('f-currency') || 'USD' };
 }
 
+// The Pokémon card fields, validated. Shared by add and edit. Same rules as a skin: buy price
+// required, current price optional (starts at cost). Condition only for raw, grade only for graded.
+function readPokemonForm() {
+  const val  = id => document.getElementById(id).value;
+  const name = val('f-name').trim();
+  if (!name) return { error: 'Name is required.' };
+  const units = parseUserNumber(val('f-units'));
+  if (isNaN(units) || units <= 0) return { error: 'Enter a valid quantity.' };
+  const entry = parseUserNumber(val('f-entry'));
+  if (isNaN(entry) || entry <= 0) return { error: 'Enter what you paid per item.' };
+  const kind = ['raw', 'graded', 'sealed'].includes(val('f-poke-kind')) ? val('f-poke-kind') : 'raw';
+  let grade = null;
+  if (kind === 'graded') {
+    const raw = String(val('f-poke-grade')).trim().replace(',', '.'); // "9,5" is a grade, never thousands
+    grade = raw ? Number(raw) : NaN;
+    if (!(grade >= 1 && grade <= 10)) return { error: 'Grade must be between 1 and 10.' };
+  }
+  const current = parseUserNumber(val('f-current'));
+  return { name, units, entry, kind, grade,
+           condition: kind === 'raw' ? val('f-poke-condition') : '',
+           grader:    kind === 'graded' ? val('f-poke-grader') : '',
+           set:       val('f-poke-set').trim(),
+           number:    kind === 'sealed' ? '' : val('f-poke-number').trim(),
+           language:  val('f-poke-language') || 'English',
+           current: current > 0 ? current : null, // null = keep the last price (a new card starts at cost)
+           currency: val('f-currency') || 'USD' };
+}
+function pokemonFields(f) {
+  return { pokeKind: f.kind, pokeCondition: f.condition, pokeGrader: f.grader, pokeGrade: f.grade,
+           pokeSet: f.set, pokeNumber: f.number, pokeLanguage: f.language };
+}
+// Raw shows condition, graded shows company + grade, sealed has no card number.
+function onPokeKindChange() {
+  const kind = document.getElementById('f-poke-kind').value;
+  document.getElementById('f-poke-condition-group').style.display = kind === 'raw' ? '' : 'none';
+  document.getElementById('f-poke-grade-row').style.display       = kind === 'graded' ? '' : 'none';
+  document.getElementById('f-poke-number-group').style.display    = kind === 'sealed' ? 'none' : '';
+  document.getElementById('f-poke-set').placeholder = kind === 'sealed' ? 'e.g. 151 Booster Box' : 'e.g. Base Set, 151, Evolving Skies';
+}
+
+// Adds a CS skin or a Pokémon card - same row shape, different detail fields and sector.
 function submitSkinAsset() {
-  const f = readSkinForm();
+  const poke = _addMode === 'pokemon';
+  const f = poke ? readPokemonForm() : readSkinForm();
   if (f.error) { document.getElementById('f-error').textContent = f.error; return; }
   const ticker = derivePhysicalTicker(f.name); // a row-dot code, never priced (fetchPrices skips skins)
   const { color, bg } = nextColorFor(ticker);
   pushUndo(`add ${f.name}`);
-  portfolio.push({ name: f.name, ticker, sector: 'CS Skins', units: f.units, entryPrice: f.entry, currentPrice: f.current || f.entry,
+  portfolio.push({ name: f.name, ticker, sector: poke ? 'Pokémon Cards' : 'CS Skins', units: f.units, entryPrice: f.entry, currentPrice: f.current || f.entry,
     targetPrice: null, invalidationPrice: null, currency: f.currency, color, bg, thesis: '', leveraged: false, marginUSD: null,
     showThesis: false, coingeckoId: null, yahooTicker: null, direction: null, hasCostBasis: true,
-    skin: true, exterior: f.exterior, variant: f.variant, float: f.float,
+    ...(poke ? { pokemon: true, ...pokemonFields(f) } : { skin: true, exterior: f.exterior, variant: f.variant, float: f.float }),
     openedDate: today(), posId: nextPosId++ });
 
   const fundCashId = parseInt(document.getElementById('f-fund-cash').value);
@@ -6670,9 +6811,9 @@ function setSectorField(sector) {
 function showEditModal(posId) {
   const p = portfolio.find(x => x.posId === posId);
   if (!p) return;
-  showAddModal(p.physical ? 'physical' : p.skin ? 'skin' : p.option ? 'option' : p.leveraged ? 'perp' : 'spot');
+  showAddModal(p.physical ? 'physical' : p.skin ? 'skin' : p.pokemon ? 'pokemon' : p.option ? 'option' : p.leveraged ? 'perp' : 'spot');
   _editPosId = posId;
-  document.getElementById('addModalTitle').textContent     = p.physical ? 'Edit Physical Asset' : p.skin ? 'Edit CS Skin' : p.option ? 'Edit Option' : p.leveraged ? 'Edit Leverage Position' : 'Edit Position';
+  document.getElementById('addModalTitle').textContent     = p.physical ? 'Edit Physical Asset' : p.skin ? 'Edit CS Skin' : p.pokemon ? 'Edit Pokémon Card' : p.option ? 'Edit Option' : p.leveraged ? 'Edit Leverage Position' : 'Edit Position';
   document.getElementById('addModalSubmitBtn').textContent = 'Save Changes';
   document.getElementById('fund-from-cash-row').style.display = 'none';
   const set = (id, v) => { document.getElementById(id).value = (v == null ? '' : v); };
@@ -6691,6 +6832,18 @@ function showEditModal(posId) {
     set('f-exterior', p.exterior || '');
     set('f-variant', p.variant || '');
     set('f-float', p.float);
+  } else if (p.pokemon) {
+    set('f-units', p.units);
+    set('f-entry', p.entryPrice);
+    set('f-current', p.currentPrice);
+    set('f-poke-kind', p.pokeKind || 'raw');
+    if (p.pokeCondition) set('f-poke-condition', p.pokeCondition);
+    if (p.pokeGrader)    set('f-poke-grader', p.pokeGrader);
+    set('f-poke-grade', p.pokeGrade);
+    set('f-poke-set', p.pokeSet);
+    set('f-poke-number', p.pokeNumber);
+    set('f-poke-language', p.pokeLanguage || 'English');
+    onPokeKindChange();
   } else if (p.option) {
     set('f-units', p.units);
     set('f-opt-underlying', p.underlying);
@@ -6763,6 +6916,12 @@ function submitEditAsset() {
     Object.assign(p, { name: f.name, units: f.units, entryPrice: f.entry, currency: f.currency,
       exterior: f.exterior, variant: f.variant, float: f.float });
     if (f.current) p.currentPrice = f.current;
+  } else if (p.pokemon) {
+    const f = readPokemonForm();
+    if (f.error) { err.textContent = f.error; return; }
+    pushUndo(`edit ${p.name}`);
+    Object.assign(p, { name: f.name, units: f.units, entryPrice: f.entry, currency: f.currency, ...pokemonFields(f) });
+    if (f.current) p.currentPrice = f.current;
   } else if (p.option) {
     const f = readOptionForm();
     if (f.error) { err.textContent = f.error; return; }
@@ -6830,7 +6989,7 @@ function submitEditAsset() {
 function submitAddAsset() {
   if (_editPosId != null)      { submitEditAsset(); return; }
   if (_addMode === 'physical') { submitPhysicalAsset(); return; }
-  if (_addMode === 'skin')     { submitSkinAsset(); return; }
+  if (_addMode === 'skin' || _addMode === 'pokemon') { submitSkinAsset(); return; }
   if (_addMode === 'option')   { submitOptionAsset(); return; }
   const name     = document.getElementById('f-name').value.trim();
   const ticker   = cleanCode(document.getElementById('f-ticker').value.trim().toUpperCase());
@@ -7194,13 +7353,14 @@ function renderCharts(data) {
   // Bar
   // One bar per position: spot measured on cost basis, perps on margin.
   // Same-ticker spot + perp stay separate so a hedge shows both legs.
+  // P&L includes realized (partial TPs) so the bar matches the table's P&L column.
   const barData = data.map(p => {
     const deployed = p.leveraged ? (p.marginUSD || 0) : p.invested;
     const label = p.leveraged && p.leverage
       ? `${p.ticker} ${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}`
       : p.ticker;
-    return { label, ticker: p.ticker, pnlUsd: p.pnlUsd, deployed,
-             pct: deployed > 0 ? (p.pnlUsd / deployed) * 100 : 0 };
+    return { label, ticker: p.ticker, pnlUsd: p.totalPnlUsd, realizedPnl: p.realizedPnl, deployed,
+             pct: deployed > 0 ? (p.totalPnlUsd / deployed) * 100 : 0 };
   }).sort((a, b) => b.pct - a.pct);
 
   if (barChart) barChart.destroy();
@@ -7232,7 +7392,7 @@ function renderCharts(data) {
           callbacks: {
             label: ctx => {
               const g = barData[ctx.dataIndex];
-              return `  ${fmtPct(g.pct)}  (${fmtUsd(g.pnlUsd)})`;
+              return `  ${fmtPct(g.pct)}  (${fmtUsd(g.pnlUsd)}${g.realizedPnl ? ` incl. ${fmtUsd(g.realizedPnl)} realized` : ''})`;
             }
           }
         }
@@ -8548,6 +8708,12 @@ function csExteriorFromFloat(f) {
 // "StatTrak™ · Field-Tested · 0.2134" under the row name.
 function csSkinDetail(a) {
   return [a.variant, a.exterior, a.float != null ? String(a.float) : ''].filter(Boolean).join(' · ');
+}
+// "PSA 10 · Base Set · 4/102 · Japanese" under a Pokémon card's name. English is the default, so left out.
+function pokemonDetail(a) {
+  const kind = a.pokeKind === 'graded' ? [a.pokeGrader, a.pokeGrade].filter(v => v != null && v !== '').join(' ')
+             : a.pokeKind === 'sealed' ? 'Sealed' : a.pokeCondition;
+  return [kind, a.pokeSet, a.pokeNumber, a.pokeLanguage && a.pokeLanguage !== 'English' ? a.pokeLanguage : ''].filter(Boolean).join(' · ');
 }
 // A float is always 0.xxx, so a comma can only be a decimal mark. Not parseUserNumber: that
 // reads "0,2134" (comma + 4 digits) as thousands grouping.
