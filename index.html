@@ -1802,8 +1802,9 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <div id="syncSetup">
       <div style="font-size:12px;color:var(--text2);line-height:1.65;margin-bottom:16px">
         Your data lives in this browser only, so a second computer starts empty. This keeps the two in
-        step through a <b>secret gist</b> &mdash; a private file parked on your GitHub account. Nobody can
-        find it without the link, and every save is kept as a version you can roll back to.
+        step through a <b>secret gist</b> &mdash; a file on your GitHub account that is not listed or searchable.
+        It is <b>not</b> locked, though: anyone who gets its link can read it, so never share that link. Every
+        save is kept as a version you can roll back to.
         <div style="margin-top:12px;padding-left:2px">
           <b>1.</b> Go to <a href="https://gist.github.com" target="_blank" rel="noopener" style="color:var(--cyan)">gist.github.com</a>.
           Put <code style="color:var(--amber)">portfolio-dashboard.json</code> in the filename box, type
@@ -1811,8 +1812,10 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
           <b>Create secret gist</b>.<br>
           <b>2.</b> Look at the address bar. The long code after your username is the <b>Gist ID</b>. Copy it.<br>
           <b>3.</b> Go to <a href="https://github.com/settings/tokens/new?scopes=gist&description=Portfolio%20Dashboard%20sync" target="_blank" rel="noopener" style="color:var(--cyan)">this token page</a>
-          (already filled in). Set Expiration to <b>No expiration</b>, check that <b>gist</b> is the only
-          box ticked, and click <b>Generate token</b>. Copy the token &mdash; GitHub shows it once.<br>
+          (already filled in). Set Expiration to <b>90 days</b>, check that <b>gist</b> is the only
+          box ticked, and click <b>Generate token</b>. Copy the token &mdash; GitHub shows it once.
+          GitHub emails you before it runs out; then make a new one the same way and paste it in here.
+          A token that never expires stays usable forever if it ever leaks.<br>
           <b>4.</b> Paste both below. Repeat steps 3&ndash;4 on your other computer with the <i>same</i> Gist ID.
         </div>
       </div>
@@ -3074,6 +3077,7 @@ const KNOWN_PRICE_SOURCES = {
 // CG_ID_RE, and the name only ever goes into textContent.
 const CG_ID_RE = /^[a-z0-9][a-z0-9-]{0,99}$/;
 const _cgLookupCache = {}; // 'DRV' -> { id, name, rank } or null (no such coin). Session only.
+const TOKENIZED_STOCK_RE = /tokenized|robinhood|xstock|bstocks|rstock|backpack-securities|dinari|ondo/i;
 async function lookupCoingeckoCoin(ticker) {
   const t = cleanCode(String(ticker || '').trim().toUpperCase());
   if (!t) return null;
@@ -3085,10 +3089,17 @@ async function lookupCoingeckoCoin(ticker) {
   } catch (_) { return undefined; }                          // could not ask - not cached, the next try asks again
   if (!data || !Array.isArray(data.coins)) return undefined;  // rate limited / error answer
   const rank = c => Number.isInteger(c.market_cap_rank) && c.market_cap_rank > 0 ? c.market_cap_rank : Infinity;
-  const best = data.coins
+  const matches = data.coins
     .filter(c => c && typeof c.symbol === 'string' && c.symbol.toUpperCase() === t && typeof c.id === 'string' && CG_ID_RE.test(c.id))
-    .sort((a, b) => (rank(a) === rank(b) ? 0 : rank(a) - rank(b)))[0];
-  const out = best ? { id: best.id, name: String(best.name || best.id).slice(0, 80), rank: isFinite(rank(best)) ? rank(best) : null } : null;
+    .sort((a, b) => (rank(a) === rank(b) ? 0 : rank(a) - rank(b)));
+  // NVDA, AAPL, TSLA… match tokenized copies of the stock (Robinhood, Dinari, xStock…) plus junk
+  // coins like TSLA6900. If a tokenized stock matches, the ticker is a stock - unless a real,
+  // well-ranked coin shares the symbol.
+  const coins = matches.filter(c => !TOKENIZED_STOCK_RE.test(c.id + ' ' + (c.name || '')));
+  const best  = coins[0];
+  const stock = coins.length < matches.length && !(best && rank(best) <= 500);
+  const out = stock ? { stock: true }
+            : best  ? { id: best.id, name: String(best.name || best.id).slice(0, 80), rank: isFinite(rank(best)) ? rank(best) : null } : null;
   _cgLookupCache[t] = out;
   return out;
 }
@@ -3101,10 +3112,12 @@ const _cgAuto   = { 'f-': '', 'pa-': '' };
 const _cgStored = { 'f-': '', 'pa-': '' };
 const _cgSeq    = { 'f-': 0,  'pa-': 0 };
 const _cgTimer  = {};
+let _yahooAuto  = ''; // the Yahoo ticker the lookup filled in for a stock - cleared again if the ticker changes
 function resetCoinLookup(px) {
   clearTimeout(_cgTimer[px]);
   _cgSeq[px]++;
   _cgAuto[px] = _cgStored[px] = '';
+  if (px === 'f-') _yahooAuto = '';
   document.getElementById(px + 'cg-hint').textContent = '';
 }
 function scheduleCoinLookup(px) {
@@ -3126,6 +3139,11 @@ async function runCoinLookup(px) {
   const t    = cleanCode(document.getElementById(px + 'ticker').value.trim().toUpperCase());
   const auto = () => { const v = idEl.value.trim(); return !v || v === _cgAuto[px]; };
   const putBack = () => { idEl.value = _cgStored[px]; _cgAuto[px] = _cgStored[px]; };
+  if (px === 'f-' && _yahooAuto && _yahooAuto !== t) {
+    const yEl = document.getElementById('f-yahoo');
+    if (yEl.value.trim().toUpperCase() === _yahooAuto) yEl.value = ''; // only undo our own fill-in
+    _yahooAuto = '';
+  }
   if (!auto()) { hint.textContent = ''; return; } // an id typed by hand is the owner's call
   const wanted = px === 'f-' ? (_addMode === 'spot' || _addMode === 'perp') && !document.getElementById('f-yahoo').value.trim()
                              : document.getElementById('pa-category').value === 'Crypto';
@@ -3144,6 +3162,15 @@ async function runCoinLookup(px) {
   if (hit === undefined) {
     putBack();
     hint.textContent = "Couldn't reach CoinGecko — type the ID yourself: it's the last part of the coin's address on coingecko.com.";
+    return;
+  }
+  if (hit && hit.stock) {
+    putBack();
+    const yEl = px === 'f-' ? document.getElementById('f-yahoo') : null;
+    if (yEl && !yEl.value.trim()) { yEl.value = t; _yahooAuto = t; } // US stocks use the plain ticker on Yahoo
+    hint.textContent = yEl
+      ? `${t} looks like a stock, not a coin — filled the Yahoo ticker with ${t}. Not a US stock? Add the exchange ending (e.g. NOVO-B.CO).`
+      : `${t} looks like a stock, not a coin — pick the Stocks / Shares category instead.`;
     return;
   }
   if (!hit) {
@@ -3755,7 +3782,7 @@ async function gistApi(path, opts = {}) {
     },
   });
   if (!res.ok) throw new Error(
-    res.status === 401 ? 'GitHub rejected the token (401). Copy it again — it is only shown once, and a partial paste looks exactly like this.'
+    res.status === 401 ? 'GitHub rejected the token (401). It may have expired — make a new one (step 3) and paste it in. Or it was pasted only partly: copy it again.'
   : res.status === 404 ? 'No gist with that ID (404). Check the ID, and that the token belongs to the account that owns the gist.'
   : res.status === 403 ? 'GitHub refused the request (403). Usually a token without the gist scope, or too many requests in a row.'
   : `GitHub returned ${res.status}.`);
@@ -6029,7 +6056,7 @@ function showAddModal(mode) {
   document.getElementById('lbl-entry').innerHTML   = physical ? 'Purchase Price' + hint('optional — for gain/loss')
                                                    : skin     ? 'Buy Price (each)' : 'Avg Entry Price';
   document.getElementById('lbl-current').innerHTML = physical ? 'Current Value'
-                                                   : skin     ? 'Current Price' + hint('optional — starts at buy price, update it yourself') : 'Current Price';
+                                                   : skin     ? 'Current Price' + hint('optional — starts at buy price, update it yourself') : 'Current Price' + hint('optional — fetched automatically');
   document.getElementById('lbl-units').textContent = skin ? 'Quantity' : 'Units / Amount Held';
   document.getElementById('f-name').placeholder    = physical ? 'e.g. Tesla Model 3' : poke ? 'e.g. Charizard' : skin ? 'e.g. AK-47 | Redline' : 'e.g. Bitcoin';
   const secSel = document.getElementById('f-sector-select');
@@ -7010,7 +7037,8 @@ function submitAddAsset() {
   if (!name || !ticker)          { err.textContent = 'Name and ticker are required.'; return; }
   if (isNaN(units) || units <= 0){ err.textContent = 'Enter a valid units / amount.'; return; }
   if (isNaN(entry) || entry <= 0){ err.textContent = 'Enter a valid entry price.'; return; }
-  if (isNaN(current)||current<=0){ err.textContent = 'Enter a valid current price.'; return; }
+  if (!isNaN(current) && current <= 0) { err.textContent = 'Enter a valid current price, or leave it blank.'; return; }
+  if (isNaN(current) && !coingeckoId && !yahooTicker) { err.textContent = 'Enter the current price — there is no price source (CoinGecko ID or Yahoo ticker) to fetch it from.'; return; }
   if (leveraged && (isNaN(marginUSD) || marginUSD <= 0)) { err.textContent = 'Enter a valid margin amount.'; return; }
 
   const existing = portfolio.find(p => p.ticker === ticker);
@@ -7020,7 +7048,7 @@ function submitAddAsset() {
   const invRaw = parseFloat(document.getElementById('f-invalidation').value);
   const invalidationPrice = (!isNaN(invRaw) && invRaw > 0) ? invRaw : null;
   pushUndo(`add ${ticker}`);
-  portfolio.push({ name, ticker, sector, units, entryPrice: entry, currentPrice: current, targetPrice, invalidationPrice, currency, color, bg, thesis: thesis || '', leveraged, marginUSD, showThesis, coingeckoId, yahooTicker, direction: leveraged ? _addDirection : null, openedDate: today(), posId: nextPosId++ });
+  portfolio.push({ name, ticker, sector, units, entryPrice: entry, currentPrice: isNaN(current) ? entry : current, targetPrice, invalidationPrice, currency, color, bg, thesis: thesis || '', leveraged, marginUSD, showThesis, coingeckoId, yahooTicker, direction: leveraged ? _addDirection : null, openedDate: today(), posId: nextPosId++ });
 
   // A coin added after this session's one-shot lookup would otherwise sit untagged until
   // the next reload, so look this one up now. Free when the sector is already known.
@@ -7043,9 +7071,19 @@ function submitAddAsset() {
   saveState();
   hideAddModal();
   renderAll();
+  // A blank current price starts at entry - fetch the real one now instead of at the next refresh
+  if (isNaN(current)) fetchPrices();
 }
 
 // ── CHARTS ──────────────────────────────────────────────────────────────────
+
+// What a position is called in charts and short lists. Physical assets, skins and cards only have a
+// made-up row code (ROLEXS, CHARIZ) - show their name instead. Everything else keeps its ticker.
+function chartLabel(p) {
+  if (!(p.physical || p.skin || p.pokemon)) return p.ticker;
+  const n = String(p.name || p.ticker);
+  return n.length > 22 ? n.slice(0, 21) + '…' : n;
+}
 
 // The allocation donut in its default shape: one slice per open position, plus Cash.
 // Same-ticker spot and perp legs sit adjacent and share a colour, split by a white
@@ -7061,6 +7099,10 @@ function renderAssetDonut(data, cash, th) {
 
   const donutLabels = [...sorted.map(p =>
     p.leveraged && p.leverage ? `${p.ticker} ${p.leverage.toFixed(1)}x` : p.ticker
+  ), 'Cash'];
+  // What the legend and tooltip title show - names for rows that only have a made-up code
+  const donutNames = [...sorted.map(p =>
+    p.leveraged && p.leverage ? `${p.ticker} ${p.leverage.toFixed(1)}x` : chartLabel(p)
   ), 'Cash'];
   // use notional (currentValue) for all positions so the pie shows true market exposure
   const donutValues = [...sorted.map(p => Math.max(0, p.currentValue)), cash];
@@ -7154,12 +7196,11 @@ function renderAssetDonut(data, cash, th) {
               return lbls.map((label, i) => {
                 const isLev  = /\d+(\.\d+)?x$/.test(String(label));
                 const ticker = String(label).split(' ')[0];
-                if (isLev || seen.has(ticker)) return null;
-                seen.add(ticker);
-                const levIdx = lbls.findIndex((l, j) =>
-                  j !== i && String(l).startsWith(ticker + ' ') && /\d+(\.\d+)?x$/.test(String(l))
-                );
-                const text = ticker;
+                // a leveraged slice only gets its own legend entry when there is no spot leg to fold into
+                const hasSpot = isLev && lbls.some((l, j) => j !== i && String(l) === ticker);
+                if (hasSpot || seen.has(isLev ? label : ticker)) return null;
+                seen.add(isLev ? label : ticker);
+                const text = donutNames[i];
                 return {
                   text,
                   fillStyle: bgs[i],
@@ -7183,6 +7224,7 @@ function renderAssetDonut(data, cash, th) {
           bodyColor: th.body,
           padding: 12,
           callbacks: {
+            title: items => items.length ? donutNames[items[0].dataIndex] : '',
             label: ctx => {
               const label  = String(ctx.label);
               const ticker = label.split(' ')[0];
@@ -7358,7 +7400,7 @@ function renderCharts(data) {
     const deployed = p.leveraged ? (p.marginUSD || 0) : p.invested;
     const label = p.leveraged && p.leverage
       ? `${p.ticker} ${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}`
-      : p.ticker;
+      : chartLabel(p);
     return { label, ticker: p.ticker, pnlUsd: p.totalPnlUsd, realizedPnl: p.realizedPnl, deployed,
              pct: deployed > 0 ? (p.totalPnlUsd / deployed) * 100 : 0 };
   }).sort((a, b) => b.pct - a.pct);
@@ -7579,7 +7621,7 @@ function renderThesis(data) {
   if (hidden.length) {
     hiddenEl.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center">
       <span style="font-size:11px;color:var(--text3);margin-right:2px">Not shown:</span>
-      ${hidden.map(p => `<button onclick="showThesisCard(${p.posId})" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:11px;color:var(--text2);cursor:pointer;transition:border-color 0.15s,color 0.15s" onmouseover="this.style.borderColor='var(--cyan)';this.style.color='var(--cyan)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">+ ${p.ticker}</button>`).join('')}
+      ${hidden.map(p => `<button onclick="showThesisCard(${p.posId})" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:11px;color:var(--text2);cursor:pointer;transition:border-color 0.15s,color 0.15s" onmouseover="this.style.borderColor='var(--cyan)';this.style.color='var(--cyan)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">+ ${escHtml(chartLabel(p))}</button>`).join('')}
     </div>`;
   } else {
     hiddenEl.innerHTML = '';
