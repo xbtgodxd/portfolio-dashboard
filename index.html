@@ -7443,10 +7443,15 @@ function renderCharts(data) {
   const donutLbl = document.getElementById('donutTotalLabel');
   if (donutLbl) donutLbl.textContent = fmtUsd(trueNetWorth);
 
+  // Leverage slices are drawn at full size, and that already holds the margin (+ P&L when a
+  // cash entry is linked). Take it out of the cash slice so it is not counted twice.
+  const donutCash = Math.max(0, cash - data.reduce((s, p) =>
+    p.leveraged && p.marginUSD > 0 ? s + p.marginUSD + (p.hasLinkedCash ? p.pnlUsd : 0) : s, 0));
+
   updateDonutGroupBtn();
-  if      (donutGroupMode === 'sector') renderSectorDonut(data, cash, th);
-  else if (donutGroupMode === 'theme')  renderThemeDonut(data, cash, th);
-  else                                  renderAssetDonut(data, cash, th);
+  if      (donutGroupMode === 'sector') renderSectorDonut(data, donutCash, th);
+  else if (donutGroupMode === 'theme')  renderThemeDonut(data, donutCash, th);
+  else                                  renderAssetDonut(data, donutCash, th);
 
   // Bar
   // One bar per position: spot measured on cost basis, perps on margin.
