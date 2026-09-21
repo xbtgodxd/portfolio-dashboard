@@ -884,6 +884,17 @@ textarea.form-input { min-height: 80px; resize: vertical; }
 }
 .cash-add-chip:hover { border-color: var(--cyan); color: var(--cyan); }
 
+/* ── POSITION SIZE CALCULATOR ── */
+.calc-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.calc-line input {
+  width: 70px; text-align: right;
+  background: var(--bg4); border: 1px solid var(--border2); border-radius: 5px;
+  padding: 5px 8px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none;
+}
+.calc-line input:focus { border-color: var(--cyan); }
+.calc-amt { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text); }
+.calc-note { font-family: var(--mono); font-size: 12px; color: var(--text3); }
+
 /* ── HISTORY ── */
 .history-chart-card {
   background: var(--bg2);
@@ -1355,6 +1366,9 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 
   <!-- CASH -->
   <div id="cashSection"></div>
+
+  <!-- POSITION SIZE CALCULATOR -->
+  <div id="sizeCalcSection"></div>
 
   <!-- CHARTS -->
   <div class="section-header"><div class="section-title">Allocation &amp; Performance</div></div>
@@ -3227,6 +3241,9 @@ let cryptoSectorCache = {};
 // 'asset' = one slice per position (the original donut), 'sector' = slices grouped by
 // sector. A preference, like historyLogScale - persisted, not snapshotted.
 let donutGroupMode = 'asset';
+// Position size calculator: the last % typed in. A preference - persisted, never
+// snapshotted for undo, never touches net worth.
+let sizeCalcPct = 15;
 // The sector lookup is lazy: nothing hits CoinGecko until the sector donut is actually
 // drawn, and then only once a session. Someone who never opens the view never pays for it.
 let sectorLookupTried = false;
@@ -3622,6 +3639,7 @@ function loadState() {
   historyLogScale      = saved.historyLogScale || false;
   cryptoSectorCache    = saved.cryptoSectorCache || {};
   donutGroupMode       = DONUT_MODES.indexOf(saved.donutGroupMode) >= 0 ? saved.donutGroupMode : 'asset';
+  sizeCalcPct          = cleanSizeCalcPct(saved.sizeCalcPct);
   showWithdrawalAdj    = saved.showWithdrawalAdj !== false; // on unless explicitly turned off
   privateShowHome      = saved.privateShowHome || false;
   if (saved.fxRates) {
@@ -3682,7 +3700,7 @@ function buildStateJson() {
     airdrops, nextAirdropId,
     activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode,
     historyWindow, historyLogScale, showWithdrawalAdj, privateShowHome, paletteVersion: PALETTE_VERSION,
-    cryptoSectorCache, donutGroupMode,
+    cryptoSectorCache, donutGroupMode, sizeCalcPct,
     savedAt: Date.now() // informational only — tells two same-day backup files apart
   });
 }
@@ -4393,6 +4411,58 @@ function updateCash(id, field, value) {
   const d = computeAll();
   renderCashSection(d);
   renderSummary(d);
+}
+
+// ── POSITION SIZE CALCULATOR ───────────────────────────────────────────────
+// "What is 15% of my net worth?" - one % in, the dollar amount out.
+
+function cleanSizeCalcPct(v) {
+  return typeof v === 'number' && isFinite(v) && v >= 0 && v <= 1000 ? v : 15;
+}
+
+function netWorthUSD(data) {
+  return data.reduce((s, p) => s + p.equityValue, 0) + cashTotalUSD(data);
+}
+
+function sizeCalcResult(pct, nw) {
+  if (pct == null) return { usd: '—', home: '' };
+  const amt = nw * pct / 100;
+  return { usd: fmtUsd(amt), home: homeCurrency !== 'USD' ? fmtHome(amt) : '' };
+}
+
+function renderSizeCalc(data) {
+  const el = document.getElementById('sizeCalcSection');
+  if (!el) return;
+  data = data || computeAll();
+  const nw = netWorthUSD(data);
+  const r = sizeCalcResult(sizeCalcPct, nw);
+  el.innerHTML = `
+    <div class="cash-section">
+      <div class="cash-header" style="margin-bottom:10px">
+        <div class="section-title">Position Size Calculator</div>
+        <div>
+          <span class="cash-total-label">Net worth</span>
+          <span class="cash-total">${fmtUsd(nw)}</span>
+        </div>
+      </div>
+      <div class="calc-line">
+        <input type="number" min="0" step="any" value="${sizeCalcPct == null ? '' : sizeCalcPct}"
+          oninput="setSizeCalcPct(this.value)" onchange="saveState()"
+          onkeydown="if(event.key==='Enter')this.blur()" />
+        <span class="calc-note">% of net worth =</span>
+        <span class="calc-amt" id="calcAmt">${r.usd}</span>
+        <span class="calc-note" id="calcHome">${r.home}</span>
+      </div>
+    </div>`;
+}
+
+// Typing only updates the result in place - a full re-render would steal focus.
+function setSizeCalcPct(value) {
+  const v = String(value).trim() === '' ? NaN : parseUserNumber(value);
+  sizeCalcPct = isNaN(v) || v < 0 || v > 1000 ? null : v;
+  const r = sizeCalcResult(sizeCalcPct, netWorthUSD(computeAll()));
+  document.getElementById('calcAmt').innerHTML = r.usd;
+  document.getElementById('calcHome').innerHTML = r.home;
 }
 
 function cycleColor(posId) {
@@ -9605,6 +9675,7 @@ function renderAll() {
   const data = computeAll();
   renderSummary(data);
   renderCashSection(data);
+  renderSizeCalc(data);
   renderFxBar();
   renderTable(data);
   renderCharts(data);
