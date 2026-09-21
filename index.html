@@ -2096,6 +2096,27 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <input class="form-input" id="f-current" type="number" placeholder="e.g. 95000" step="any" min="0" oninput="updateFundPreview()" />
       </div>
     </div>
+    <div id="leverage-fields" style="display:none;margin-bottom:16px">
+      <div class="form-group">
+        <label class="form-label">Direction</label>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="dir-btn long active" id="dir-long" onclick="setAddDirection('long')">▲ Long</button>
+          <button type="button" class="dir-btn short" id="dir-short" onclick="setAddDirection('short')">▼ Short</button>
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:4px">
+        <div class="form-group">
+          <label class="form-label">Margin (USD)</label>
+          <input class="form-input" id="f-margin" type="number" placeholder="e.g. 500" step="any" min="0" oninput="recalcPerpUnits()" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Position Size (USD)</label>
+          <input class="form-input" id="f-size" type="number" placeholder="e.g. 5000" step="any" min="0" oninput="recalcPerpUnits()" />
+        </div>
+      </div>
+      <div id="lev-preview" style="font-size:13px;color:var(--text2);margin-bottom:6px;min-height:18px"></div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.5">Copy both numbers from the exchange — leverage is worked out for you.<br>Margin is <b style="color:var(--text2)">not</b> added to net worth here — only the position's P&amp;L is. Keep the money in a cash entry (e.g. your exchange balance). To have that entry follow margin + P&amp;L live, link it to this position under <b style="color:var(--text2)">Edit</b> → cash.</div>
+    </div>
     <div class="form-row" id="f-tp-row">
       <div class="form-group">
         <label class="form-label">Target Price <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional</span></label>
@@ -2148,28 +2169,6 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
         <input type="checkbox" id="f-show-thesis" checked style="accent-color:var(--cyan);width:14px;height:14px;cursor:pointer" />
         <span style="font-size:12px;font-weight:500;color:var(--text2)">Include in thesis board</span>
       </label>
-    </div>
-    <div id="leverage-fields" style="display:none;margin-bottom:16px">
-      <div class="form-group">
-        <label class="form-label">Direction</label>
-        <div style="display:flex;gap:8px">
-          <button type="button" class="dir-btn long active" id="dir-long" onclick="setAddDirection('long')">▲ Long</button>
-          <button type="button" class="dir-btn short" id="dir-short" onclick="setAddDirection('short')">▼ Short</button>
-        </div>
-      </div>
-      <div class="form-group" style="margin-bottom:10px">
-        <label class="form-label">Margin / Collateral (USD)</label>
-        <input class="form-input" id="f-margin" type="number" placeholder="e.g. 820" step="any" min="0" oninput="recalcPerpUnits()" />
-        <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:4px">Actual cash at risk. Position size = margin × leverage.<br>Margin is <b style="color:var(--text2)">not</b> added to net worth here — only the position's P&amp;L is. Keep the money in a cash entry (e.g. your exchange balance). To have that entry follow margin + P&amp;L live, link it to this position under <b style="color:var(--text2)">Edit</b> → cash.</div>
-      </div>
-      <div class="form-group" style="margin-bottom:4px">
-        <label class="form-label">Leverage</label>
-        <div style="display:flex;gap:12px;align-items:center">
-          <input type="range" id="f-leverage" min="1" max="25" step="0.5" value="5" oninput="onLeverageInput(this.value)" style="flex:1" />
-          <input class="form-input" id="f-leverage-num" type="number" min="1" step="any" value="5" style="width:80px;text-align:right" oninput="onLeverageInput(this.value)" />
-        </div>
-        <div id="lev-preview" style="font-size:11px;color:var(--text3);margin-top:6px;min-height:16px"></div>
-      </div>
     </div>
     <div id="fund-from-cash-row" class="form-group" style="margin-bottom:12px">
       <label class="form-label">Fund from cash <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">optional — auto-subtracts cost</span></label>
@@ -6054,41 +6053,30 @@ function setAddDirection(dir) {
   recalcPerpUnits();
 }
 
-function onLeverageInput(val) {
-  let lev = parseFloat(val);
-  if (isNaN(lev) || lev < 1) lev = 1;
-  const slider = document.getElementById('f-leverage');
-  const num    = document.getElementById('f-leverage-num');
-  if (slider) slider.value = Math.min(lev, 25);
-  if (num && document.activeElement !== num) num.value = lev;
-  recalcPerpUnits();
-}
-
-function currentLeverageInput() {
-  const num = parseFloat(document.getElementById('f-leverage-num').value);
-  if (!isNaN(num) && num >= 1) return num;
-  const slider = parseFloat(document.getElementById('f-leverage').value);
-  return (!isNaN(slider) && slider >= 1) ? slider : 1;
-}
-
-// Derive position size from margin × leverage — units stays editable for fine-tuning
+// Leverage = position size / margin. Units (hidden for perps) = size / entry price.
 function recalcPerpUnits() {
   if (_addMode !== 'perp') return;
   const preview = document.getElementById('lev-preview');
   const margin  = parseFloat(document.getElementById('f-margin').value);
+  const size    = parseFloat(document.getElementById('f-size').value);
   const entry   = parseFloat(document.getElementById('f-entry').value);
   const cur     = (document.getElementById('f-currency').value || 'USD').toUpperCase();
-  const lev     = currentLeverageInput();
-  if (isNaN(margin) || margin <= 0 || isNaN(entry) || entry <= 0) {
-    if (preview) preview.textContent = 'Enter margin and entry price to size the position.';
+  if (isNaN(margin) || margin <= 0 || isNaN(size) || size <= 0) {
+    if (preview) preview.textContent = 'Enter margin and position size.';
     return;
   }
-  const rate  = fxRates[cur] ?? 1;
-  const units = (margin * lev) / (entry * rate);
-  document.getElementById('f-units').value = units;
-  if (preview) preview.innerHTML =
-    `≈ <b style="color:var(--text)">${fmtUnits(units)}</b> units · ${fmtUsd(margin * lev)} notional at <b style="color:var(--text)">${lev}x</b> ` +
-    (_addDirection === 'short' ? '<b style="color:var(--red)">short</b>' : '<b style="color:var(--green)">long</b>');
+  const lev = size / margin;
+  const dir = _addDirection === 'short' ? '<b style="color:var(--red)">short</b>' : '<b style="color:var(--green)">long</b>';
+  let html = `Leverage <b style="color:var(--text);font-size:15px">${Number(lev.toFixed(2))}x</b> ${dir}`;
+  if (lev < 1) html += ' · <span style="color:var(--red)">size is smaller than margin</span>';
+  if (!isNaN(entry) && entry > 0) {
+    const units = size / (entry * (fxRates[cur] ?? 1));
+    document.getElementById('f-units').value = units;
+    html += ` · ≈ <b style="color:var(--text)">${fmtUnits(units)}</b> units`;
+  } else {
+    html += ' · enter entry price for units';
+  }
+  if (preview) preview.innerHTML = html;
 }
 
 function showAddModal(mode) {
@@ -6107,7 +6095,7 @@ function showAddModal(mode) {
   // Skins have units (quantity) but no ticker or price-source ID - the owner keeps the price up to date.
   const hideNoTicker = physical || skin || option ? 'none' : '';
   document.getElementById('f-ticker-group').style.display     = hideNoTicker;
-  document.getElementById('f-units-group').style.display      = physical ? 'none' : '';
+  document.getElementById('f-units-group').style.display      = physical || perp ? 'none' : '';
   document.getElementById('f-tp-row').style.display           = hideNoTicker;
   document.getElementById('f-tp-help').style.display          = hideNoTicker;
   document.getElementById('f-ids-row').style.display          = hideNoTicker;
@@ -6181,7 +6169,7 @@ function showAddModal(mode) {
 
 function hideAddModal() {
   document.getElementById('addModal').classList.remove('open');
-  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-invalidation','f-thesis','f-margin','f-coingecko','f-yahoo','f-float','f-poke-grade','f-poke-set','f-poke-number'].forEach(id => {
+  ['f-name','f-ticker','f-sector','f-units','f-entry','f-current','f-target','f-invalidation','f-thesis','f-margin','f-size','f-coingecko','f-yahoo','f-float','f-poke-grade','f-poke-set','f-poke-number'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-currency').value = 'USD';
@@ -6193,8 +6181,6 @@ function hideAddModal() {
   document.getElementById('fund-from-cash-row').style.display = 'block';
   document.getElementById('f-fund-cash').value = '';
   document.getElementById('f-fund-preview').textContent = '';
-  document.getElementById('f-leverage').value = 5;
-  document.getElementById('f-leverage-num').value = 5;
   document.getElementById('lev-preview').textContent = '';
   _addMode = 'spot';
   _addDirection = 'long';
@@ -6974,11 +6960,9 @@ function showEditModal(posId) {
     setAddDirection(p.direction === 'short' ? 'short' : 'long');
     set('f-margin', p.marginUSD);
     const notional = p.units * p.entryPrice * (fxRates[(p.currency || 'USD').toUpperCase()] ?? 1);
-    const lev = (p.marginUSD > 0) ? notional / p.marginUSD : 1;
-    document.getElementById('f-leverage').value     = Math.min(Math.max(lev, 1), 25);
-    document.getElementById('f-leverage-num').value = Number(lev.toFixed(2));
+    set('f-size', Number(notional.toFixed(2)));
     recalcPerpUnits();
-    set('f-units', p.units);   // last word: the stored size beats the margin x leverage round-trip
+    set('f-units', p.units);   // last word: the stored units beat the rounded size round-trip
   }
   setTimeout(() => document.getElementById('f-name').focus(), 60);
 }
@@ -7041,6 +7025,7 @@ function submitEditAsset() {
     const current = num('f-current');
     const margin  = p.leveraged ? num('f-margin') : null;
     if (!ticker)                        { err.textContent = 'Name and ticker are required.'; return; }
+    if (p.leveraged && !(num('f-size') > 0)) { err.textContent = 'Enter the position size.'; return; }
     if (isNaN(units)   || units   <= 0) { err.textContent = 'Enter a valid units / amount.'; return; }
     if (isNaN(entry)   || entry   <= 0) { err.textContent = 'Enter a valid entry price.'; return; }
     if (isNaN(current) || current <= 0) { err.textContent = 'Enter a valid current price.'; return; }
@@ -7105,6 +7090,7 @@ function submitAddAsset() {
   const err = document.getElementById('f-error');
 
   if (!name || !ticker)          { err.textContent = 'Name and ticker are required.'; return; }
+  if (leveraged && !(parseFloat(document.getElementById('f-size').value) > 0)) { err.textContent = 'Enter the position size.'; return; }
   if (isNaN(units) || units <= 0){ err.textContent = 'Enter a valid units / amount.'; return; }
   if (isNaN(entry) || entry <= 0){ err.textContent = 'Enter a valid entry price.'; return; }
   if (!isNaN(current) && current <= 0) { err.textContent = 'Enter a valid current price, or leave it blank.'; return; }
