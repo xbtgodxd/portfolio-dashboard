@@ -884,16 +884,19 @@ textarea.form-input { min-height: 80px; resize: vertical; }
 }
 .cash-add-chip:hover { border-color: var(--cyan); color: var(--cyan); }
 
-/* ── POSITION SIZE CALCULATOR ── */
-.calc-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.calc-line input {
-  width: 70px; text-align: right;
-  background: var(--bg4); border: 1px solid var(--border2); border-radius: 5px;
-  padding: 5px 8px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none;
+/* ── POSITION SIZE CALCULATOR (inline in the FX bar) ── */
+.calc-inline { display: flex; align-items: center; gap: 6px; }
+.calc-inline input {
+  width: 46px; text-align: right;
+  background: var(--bg4); border: 1px solid var(--border2); border-radius: 4px;
+  padding: 2px 6px; color: var(--text); font-family: var(--mono); font-size: 12px; outline: none;
+  -moz-appearance: textfield;
 }
-.calc-line input:focus { border-color: var(--cyan); }
-.calc-amt { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text); }
-.calc-note { font-family: var(--mono); font-size: 12px; color: var(--text3); }
+.calc-inline input::-webkit-outer-spin-button,
+.calc-inline input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.calc-inline input:focus { border-color: var(--cyan); }
+.calc-amt { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--cyan); }
+.calc-note { font-family: var(--mono); font-size: 11px; color: var(--text3); }
 
 /* ── HISTORY ── */
 .history-chart-card {
@@ -1297,7 +1300,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
   <!-- SUMMARY -->
   <div class="summary-grid" id="summaryGrid"></div>
 
-  <!-- FX BAR -->
+  <!-- FX BAR (holds the position size calculator, right after the FX button) -->
   <div id="fxBar" style="display:none"></div>
 
   <!-- HOLDINGS TABLE -->
@@ -1366,9 +1369,6 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 
   <!-- CASH -->
   <div id="cashSection"></div>
-
-  <!-- POSITION SIZE CALCULATOR -->
-  <div id="sizeCalcSection"></div>
 
   <!-- CHARTS -->
   <div class="section-header"><div class="section-title">Allocation &amp; Performance</div></div>
@@ -4436,23 +4436,12 @@ function renderSizeCalc(data) {
   const nw = netWorthUSD(data);
   const r = sizeCalcResult(sizeCalcPct, nw);
   el.innerHTML = `
-    <div class="cash-section">
-      <div class="cash-header" style="margin-bottom:10px">
-        <div class="section-title">Position Size Calculator</div>
-        <div>
-          <span class="cash-total-label">Net worth</span>
-          <span class="cash-total">${fmtUsd(nw)}</span>
-        </div>
-      </div>
-      <div class="calc-line">
-        <input type="number" min="0" step="any" value="${sizeCalcPct == null ? '' : sizeCalcPct}"
-          oninput="setSizeCalcPct(this.value)" onchange="saveState()"
-          onkeydown="if(event.key==='Enter')this.blur()" />
-        <span class="calc-note">% of net worth =</span>
-        <span class="calc-amt" id="calcAmt">${r.usd}</span>
-        <span class="calc-note" id="calcHome">${r.home}</span>
-      </div>
-    </div>`;
+    <span class="fx-label">Size</span>
+    <input type="number" min="0" step="any" value="${sizeCalcPct == null ? '' : sizeCalcPct}" title="% of net worth"
+      oninput="setSizeCalcPct(this.value)" onchange="saveState()"
+      onkeydown="if(event.key==='Enter')this.blur()" />
+    <span class="calc-note">% =</span>
+    <span class="calc-amt" id="calcAmt">${r.usd}</span>`;
 }
 
 // Typing only updates the result in place - a full re-render would steal focus.
@@ -4461,7 +4450,6 @@ function setSizeCalcPct(value) {
   sizeCalcPct = isNaN(v) || v < 0 || v > 1000 ? null : v;
   const r = sizeCalcResult(sizeCalcPct, netWorthUSD(computeAll()));
   document.getElementById('calcAmt').innerHTML = r.usd;
-  document.getElementById('calcHome').innerHTML = r.home;
 }
 
 function cycleColor(posId) {
@@ -4498,8 +4486,16 @@ function renderFxBar() {
   const portfolioCurrencies = portfolio.map(p => (p.currency || 'USD').toUpperCase());
   const cashCurrencies = cashPositions.map(c => (c.currency || 'USD').toUpperCase());
   const foreignCurrencies = [...new Set([...portfolioCurrencies, ...cashCurrencies].filter(c => c !== 'USD'))];
-  if (foreignCurrencies.length === 0) { bar.style.display = 'none'; return; }
+  // A rebuild would pull focus out of the size calculator's % field - wait until it's left.
+  const focused = document.activeElement;
+  if (focused && focused.closest && focused.closest('#sizeCalcSection')) { _renderDeferred = true; return; }
+  bar.className = 'fx-bar';
   bar.style.display = 'flex';
+  if (foreignCurrencies.length === 0) { // no FX to show - the row only carries the calculator
+    bar.innerHTML = '<div id="sizeCalcSection" class="calc-inline"></div>';
+    renderSizeCalc();
+    return;
+  }
   const ago = fxLastUpdated ? (() => {
     const s = Math.floor((Date.now() - fxLastUpdated) / 1000);
     if (s < 60) return s + 's ago';
@@ -4507,7 +4503,6 @@ function renderFxBar() {
     return Math.floor(s/3600) + 'h ago';
   })() : null;
 
-  bar.className = 'fx-bar';
   bar.innerHTML = `
     <span class="fx-label">FX Rates</span>
     <div class="fx-divider"></div>
@@ -4524,6 +4519,8 @@ function renderFxBar() {
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       FX
     </button>
+    <div class="fx-divider"></div>
+    <div id="sizeCalcSection" class="calc-inline"></div>
     ${ago ? `<span class="fx-status">${fxSource === 'live' ? 'live · ' : fxSource === 'manual' ? 'manual · ' : 'fallback · '}${ago}</span>` : '<span class="fx-status">fallback rates</span>'}
     <div class="fx-divider"></div>
     <button class="fx-refresh-btn" onclick="fetchPrices()">
@@ -4532,6 +4529,7 @@ function renderFxBar() {
     </button>
     <span class="fx-status" id="priceStatus">${pricesLastUpdated ? 'live · ' + (() => { const s=Math.floor((Date.now()-pricesLastUpdated)/1000); return s<60?s+'s ago':Math.floor(s/60)+'m ago'; })() : 'click to fetch'}</span>
   `;
+  renderSizeCalc();
 }
 
 // ── COMPUTE ─────────────────────────────────────────────────────────────────
