@@ -1291,6 +1291,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     <button class="tab-btn" data-tab="trades" onclick="switchTab('trades')">Closed Trades</button>
     <button class="tab-btn" data-tab="thesis" onclick="switchTab('thesis')">Thesis</button>
     <button class="tab-btn" data-tab="airdrops" onclick="switchTab('airdrops')">Airdrops</button>
+    <button class="tab-btn" data-tab="vision" onclick="switchTab('vision')">Vision</button>
     <button class="tab-btn" data-tab="private" onclick="switchTab('private')">Private</button>
   </nav>
 
@@ -1505,6 +1506,52 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     </div>
 
   </div><!-- /tab-airdrops -->
+
+  <!-- TAB: VISION -->
+  <div id="tab-vision" class="tab-panel">
+
+  <div class="summary-grid" id="visionSummary"></div>
+
+  <div id="visionBar" style="display:none"></div>
+
+  <div class="section-header">
+    <div class="section-title">Holdings at Target</div>
+    <div style="font-size:11px;color:var(--text3)">Units stay exactly as they are — only the prices move</div>
+  </div>
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table id="visionTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Asset</th>
+            <th>Sector</th>
+            <th class="right">Price Now</th>
+            <th class="right">Price at Target</th>
+            <th class="right">Units</th>
+            <th class="right">Value Now</th>
+            <th class="right">Value at Target</th>
+            <th class="right">Alloc</th>
+          </tr>
+        </thead>
+        <tbody id="visionTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div id="visionFootnote" style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.6"></div>
+
+  <div id="visionCashSection"></div>
+
+  <div class="section-header"><div class="section-title">Allocation at Target</div></div>
+  <div class="chart-card" style="margin-bottom:28px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
+      <div class="section-title">Portfolio Allocation</div>
+      <span id="visionDonutTotal" style="font-family:var(--mono);font-size:12px;color:var(--text2)"></span>
+    </div>
+    <div class="chart-inner"><canvas id="visionDonutChart"></canvas></div>
+  </div>
+
+  </div><!-- /tab-vision -->
 
   <!-- TAB: PRIVATE -->
   <div id="tab-private" class="tab-panel">
@@ -3370,6 +3417,7 @@ function switchTab(name) {
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelector(`.tab-btn[data-tab="${name}"]`).classList.add('active');
   if (name === 'portfolio') setTimeout(() => { const d = computeAll(); renderCharts(d); renderHistorySection(); }, 0);
+  if (name === 'vision')    setTimeout(() => renderVisionDonut(computeAll()), 0);
   if (name === 'private')   setTimeout(() => renderPrivateSplitChart(), 0);
   activeTab = name;
   const footer = document.getElementById('appFooter');
@@ -3529,7 +3577,7 @@ function cleanCode(s) { return String(s ?? '').replace(SAFE_BAD_CHARS, ''); }
 // needs a value and null where the app already copes with "none".
 const SAFE_NUM_KEYS = new Set(['units', 'entryPrice', 'currentPrice', 'closePrice', 'amount', 'amountUSD', 'value', 'price',
   'pnlUSD', 'totalPnlUsd', 'pnlPct', 'realizedPnl', 'marginUSD', 'targetPrice', 'invalidationPrice', 'float', 'strike',
-  'optIndex', 'optDelta', 'optMarkAt', 'optSettle', 'pokeGrade', 'bankBalance', 'salary', 'dividend', 'expenses', 'tax', 'spent']);
+  'optIndex', 'optDelta', 'optMarkAt', 'optSettle', 'pokeGrade', 'bankBalance', 'salary', 'dividend', 'expenses', 'tax', 'spent', 'visionTarget']);
 const SAFE_REQUIRED_NUM = new Set(['units', 'entryPrice', 'currentPrice', 'amount', 'value']);
 
 function sanitizeValue(v, key) {
@@ -3639,6 +3687,8 @@ function loadState() {
   cryptoSectorCache    = saved.cryptoSectorCache || {};
   donutGroupMode       = DONUT_MODES.indexOf(saved.donutGroupMode) >= 0 ? saved.donutGroupMode : 'asset';
   sizeCalcPct          = cleanSizeCalcPct(saved.sizeCalcPct);
+  visionTarget         = (typeof saved.visionTarget === 'number' && isFinite(saved.visionTarget) && saved.visionTarget > 0)
+                       ? Math.min(saved.visionTarget, 1e12) : 1e6;
   showWithdrawalAdj    = saved.showWithdrawalAdj !== false; // on unless explicitly turned off
   privateShowHome      = saved.privateShowHome || false;
   if (saved.fxRates) {
@@ -3699,7 +3749,7 @@ function buildStateJson() {
     airdrops, nextAirdropId,
     activeTab, privateTabEnabled, homeCurrency, dashboardName, theme, privateInfoDismissed, privacyMode,
     historyWindow, historyLogScale, showWithdrawalAdj, privateShowHome, paletteVersion: PALETTE_VERSION,
-    cryptoSectorCache, donutGroupMode, sizeCalcPct,
+    cryptoSectorCache, donutGroupMode, sizeCalcPct, visionTarget,
     savedAt: Date.now() // informational only — tells two same-day backup files apart
   });
 }
@@ -9645,6 +9695,332 @@ function isEditingField() {
 }
 
 // Use this from anything that fires on its own (timers, fetches) instead of renderAll().
+// ── VISION ──────────────────────────────────────────────────────────────────
+
+// "What does this portfolio look like at $1M?" The units never move — every price is
+// multiplied by the same factor, so the allocation at the target is identical to today's.
+// Cash rides that multiplier too. Cash does not appreciate, so that part is money paid in
+// or profit banked along the way; scaling it is what keeps the shape of the book intact.
+//
+// Everything is measured against true net worth — the number on the Total Net Worth card —
+// so the rows plus cash add up to the target exactly. A leveraged position therefore counts
+// its equity, not its notional, and gets no target price: at 2.3x the price does not have to
+// move 18x for the equity to. Same for an option, whose payoff is not linear in the price.
+
+const VISION_PRESETS = [1e6, 2e6, 5e6, 1e7];
+let visionTarget = 1e6;
+let visionDonutChart = null;
+
+// What a row contributes to net worth. Spot, physical and options: market value. A perp: its
+// equity — margin plus P&L when the margin is tracked in a linked cash chip (that amount is
+// taken back out of the cash line, so it is counted once), P&L alone when it is not.
+function visionBase(p) {
+  if (p.leveraged) return p.hasLinkedCash ? (p.marginUSD || 0) + p.pnlUsd : p.pnlUsd;
+  return p.equityValue;
+}
+
+function visionLinkedEquity(data) {
+  return data.reduce((s, p) => s + (p.leveraged && p.hasLinkedCash ? (p.marginUSD || 0) + p.pnlUsd : 0), 0);
+}
+
+// Cash with any linked perp equity removed — that equity sits on the perp's own row instead.
+function visionCash(data) {
+  return cashTotalUSD(data) - visionLinkedEquity(data);
+}
+
+// A price x multiplier only tells the truth where value moves one-for-one with price.
+function visionPriceable(p) { return !p.leveraged && !p.option; }
+
+function visionNetWorth(data) {
+  return data.reduce((s, p) => s + visionBase(p), 0) + visionCash(data);
+}
+
+// "1m", "2,5m", "750k", "1.500.000" — the field takes whatever he types.
+function parseVisionAmount(raw) {
+  let s = String(raw ?? '').trim().toLowerCase().replace(/[$\s]/g, '');
+  let scale = 1;
+  const m = s.match(/^([\d.,]+)([bmk])$/);
+  if (m) { s = m[1]; scale = m[2] === 'b' ? 1e9 : m[2] === 'm' ? 1e6 : 1e3; }
+  // Danish grouping: "1.500.000" and "500.000" mean a million and a half and half a million,
+  // not 1.5 and 500. A net worth target is never a fraction of a dollar, so dots that each
+  // fence exactly three digits are thousands separators here, whatever parseUserNumber -
+  // which has to stay cautious, it also parses unit counts - would otherwise make of them.
+  if (!s.includes(',') && /^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  const n = parseUserNumber(s);
+  return isFinite(n) ? n * scale : NaN;
+}
+
+const fmtVisionTarget = v =>
+    v >= 1e9 ? '$' + Number((v / 1e9).toFixed(2)) + 'B'
+  : v >= 1e6 ? '$' + Number((v / 1e6).toFixed(2)) + 'M'
+  : v >= 1e3 ? '$' + Number((v / 1e3).toFixed(1)) + 'K'
+             : '$' + Math.round(v);
+
+// The target and its multiplier are two sides of one equation: show both and anyone reading
+// over his shoulder in privacy mode can divide one by the other and have the net worth. The
+// target is a goal, not a holding, so it stays visible and the multiplier is what gets hidden.
+const fmtVisionSecret = s => privacyMode ? '•••••' : s;
+
+function setVisionTarget(v) {
+  const n = typeof v === 'number' ? v : parseVisionAmount(v);
+  if (!isFinite(n) || n <= 0) { renderVisionTab(); return; } // junk typed in — put the old value back
+  visionTarget = Math.min(n, 1e12);
+  saveState();
+  renderVisionTab();
+}
+
+function renderVisionBar() {
+  const bar = document.getElementById('visionBar');
+  if (!bar) return;
+  bar.className = 'fx-bar';
+  bar.style.display = 'flex';
+  // Built once, then only the parts that change are touched. Rebuilding the innerHTML on
+  // every render would tear a preset button out from under a click that started while the
+  // custom field still had focus - the field blurs, the bar redraws, the click lands on
+  // nothing, and the button looks broken every other time you use it.
+  if (!bar.firstChild) {
+    bar.innerHTML = `
+      <span class="fx-label">Target</span>
+      <div class="fx-divider"></div>
+      ${VISION_PRESETS.map(v => `<button class="edit-btn" id="visionPreset-${v}" onclick="setVisionTarget(${v})">${fmtVisionTarget(v)}</button>`).join('')}
+      <div class="fx-divider"></div>
+      <span style="font-size:11px;color:var(--text3)">custom</span>
+      <input id="visionTargetInput" class="price-editable" style="width:100px;text-align:right"
+        onblur="setVisionTarget(this.value)"
+        onkeydown="if(event.key==='Enter')this.blur()"
+        title="Any amount — 1m, 2.5m, 750k, 1b or 1500000" />
+      <div class="fx-divider"></div>
+      <span class="fx-status">units never change · only prices</span>
+    `;
+  }
+  const input = document.getElementById('visionTargetInput');
+  if (input && document.activeElement !== input) input.value = fmtVisionTarget(visionTarget);
+  VISION_PRESETS.forEach(v => {
+    const b = document.getElementById('visionPreset-' + v);
+    if (b) b.classList.toggle('active', v === visionTarget);
+  });
+}
+
+function renderVisionSummary(data) {
+  const el = document.getElementById('visionSummary');
+  if (!el) return;
+  const now     = visionNetWorth(data);
+  const mult    = now > 0 ? visionTarget / now : 0;
+  const gap     = visionTarget - now;
+  const cashNow = visionCash(data);
+  const cashPct = now > 0 ? (cashNow / now * 100) : 0;
+  const ranked  = data.map(p => ({ p, v: visionBase(p) * mult })).sort((a, b) => b.v - a.v);
+  const top     = ranked.length ? ranked[0] : null;
+  const homeSub = homeCurrency !== 'USD'
+    ? `<div class="card-sub">${fmtHomeAmt(visionTarget / (fxRates[homeCurrency] ?? 1))}</div>` : '';
+
+  el.innerHTML = `
+    <div class="card accent-cyan">
+      <div class="card-label">Vision Net Worth</div>
+      <div class="card-value">${fmtVisionTarget(visionTarget)}</div>
+      ${homeSub}
+      <div class="card-sub" style="margin-top:2px">${data.length} positions + cash</div>
+    </div>
+    <div class="card accent-green">
+      <div class="card-label">Multiplier</div>
+      <div class="card-value green">${fmtVisionSecret(mult > 0 ? mult.toFixed(1) + 'x' : '—')}</div>
+      <div class="card-sub">every price ${fmtVisionSecret('x' + (mult > 0 ? mult.toFixed(1) : '—'))} from here</div>
+    </div>
+    <div class="card accent-purple">
+      <div class="card-label">Gap to Target</div>
+      <div class="card-value">${gap >= 0 ? '+' : ''}${fmtUsd(gap)}</div>
+      <div class="card-sub">${fmtUsd(now)} today</div>
+    </div>
+    <div class="card accent-amber">
+      <div class="card-label">Cash at Target</div>
+      <div class="card-value" style="font-size:20px">${fmtUsd(cashNow * mult)}</div>
+      <div class="card-sub">${cashPct.toFixed(1)}% of portfolio — unchanged</div>
+    </div>
+    <div class="card accent-green">
+      <div class="card-label">Biggest Line</div>
+      <div class="card-value green" style="font-size:18px">${top ? escHtml(chartLabel(top.p)) : '—'}</div>
+      <div class="card-sub green">${top ? fmtUsd(top.v) : ''}</div>
+    </div>
+  `;
+}
+
+function renderVisionTable(data) {
+  const tbody = document.getElementById('visionTableBody');
+  if (!tbody) return;
+  const now  = visionNetWorth(data);
+  const mult = now > 0 ? visionTarget / now : 0;
+  const sorted = [...data].sort((a, b) => visionBase(b) - visionBase(a));
+  let needsNote = false;
+
+  tbody.innerHTML = sorted.map((p, i) => {
+    const base     = visionBase(p);
+    const allocPct = now > 0 ? (base / now) * 100 : 0;
+    const sc       = SECTOR_COLORS[p.sector] || { color: '#8892a8', bg: 'rgba(136,146,168,0.1)' };
+    const priceOk  = visionPriceable(p);
+    if (!priceOk) needsNote = true;
+    const cur      = p.currency && p.currency !== 'USD'
+      ? `<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${escHtml(p.currency)}</span>` : '';
+    const sub      = p.skin ? (csSkinDetail(p) || p.ticker)
+                   : p.pokemon ? (pokemonDetail(p) || p.ticker)
+                   : p.option ? optionDetail(p) : p.ticker;
+    return `
+    <tr>
+      <td class="num" style="color:var(--text3);font-size:12px">${i + 1}</td>
+      <td>
+        <div class="asset-cell">
+          <div class="asset-dot" style="background:${p.bg};color:${p.color}">${escHtml(p.ticker.slice(0, 4))}</div>
+          <div${p.option ? ' class="asset-text-wrap"' : ''}>
+            <div class="asset-name">${escHtml(p.name)}${p.leveraged && p.leverage ? `<span class="lev-badge${p.direction === 'short' ? ' short' : ''}">${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}</span>` : ''}</div>
+            <div class="asset-ticker">${escHtml(sub)}</div>
+          </div>
+        </div>
+      </td>
+      <td><span class="sector-badge" style="background:${sc.bg};color:${sc.color}">${escHtml(p.sector)}</span></td>
+      <td class="right">
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+          <span class="num" style="color:var(--text2)">${fmtPriceNum(p.currentPrice)}</span>${cur}
+        </div>
+      </td>
+      <td class="right">
+        ${priceOk
+          ? `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+               <span class="num" style="color:var(--cyan);font-weight:600">${fmtPriceNum(p.currentPrice * mult)}</span>${cur}
+             </div>`
+          : `<span class="num" style="color:var(--text3)" title="A price times the multiplier would be wrong here — see the note under the table">—*</span>`}
+      </td>
+      <td class="right">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+          <span class="num" style="color:var(--text2)">${p.physical ? '—' : (privacyMode ? '•••••' : fmtUnits(p.units))}</span>
+          ${p.physical ? '' : `<span class="lev-sub">unchanged</span>`}
+        </div>
+      </td>
+      <td class="right">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+          <span class="num" style="color:var(--text2)">${fmtUsd(base)}</span>
+          ${p.leveraged ? `<span class="lev-sub">equity${p.hasLinkedCash ? ' · margin from cash' : ' · P&amp;L only'}</span>` : ''}
+        </div>
+      </td>
+      <td class="right"><span class="num" style="font-weight:600">${fmtUsd(base * mult)}</span></td>
+      <td class="right">
+        <div class="bar-wrap" style="justify-content:flex-end">
+          <span class="num" style="font-size:12px;color:var(--text2);min-width:36px;text-align:right">${allocPct.toFixed(1)}%</span>
+          <div class="alloc-bar" style="width:${Math.max(Math.min(allocPct, 100) * 0.6, 2)}px"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const note = document.getElementById('visionFootnote');
+  if (note) note.innerHTML = needsNote
+    ? `<b style="color:var(--text2)">*</b> Leveraged and option rows show no target price. Value there does not move one-for-one with the underlying — a 2.3x long needs far less than the headline multiplier, and an option spread is capped at its max payoff — so printing a price would be a lie. Their value and allocation still scale.`
+    : '';
+}
+
+function renderVisionCash(data) {
+  const el = document.getElementById('visionCashSection');
+  if (!el) return;
+  const now   = visionNetWorth(data);
+  const mult  = now > 0 ? visionTarget / now : 0;
+  const total = visionCash(data) * mult;
+
+  el.innerHTML = `
+    <div class="cash-section">
+      <div class="cash-header">
+        <div class="section-title">Cash &amp; Liquidity at Target</div>
+        <div>
+          <span class="cash-total-label">Total</span>
+          <span class="cash-total">${fmtUsd(total)}</span>
+        </div>
+      </div>
+      <div class="cash-chips">
+        ${cashPositions.map(c => {
+          const linkedPerp = c.linkedPerpId != null ? data.find(p => p.posId === c.linkedPerpId && p.leveraged) : null;
+          if (linkedPerp) {
+            // its equity already shows on the perp's own row — counting the chip too would double it
+            return `
+            <div class="cash-chip" style="opacity:0.5">
+              <span class="cash-chip-label">${escHtml(c.label)}</span>
+              <span class="cash-chip-usd">on the ${escHtml(linkedPerp.ticker)} row</span>
+            </div>`;
+          }
+          const usd = c.amount * (fxRates[(c.currency || 'USD').toUpperCase()] ?? 1);
+          return `
+          <div class="cash-chip">
+            <span class="cash-chip-label">${escHtml(c.label)}</span>
+            <span class="cash-chip-amount">${fmtUsd(usd * mult)}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function renderVisionDonut(data) {
+  if (typeof Chart === 'undefined') return;
+  const canvas = document.getElementById('visionDonutChart');
+  if (!canvas) return;
+  const th   = chartTheme();
+  const now  = visionNetWorth(data);
+  const mult = now > 0 ? visionTarget / now : 0;
+  const cash = visionCash(data) * mult;
+
+  const lbl = document.getElementById('visionDonutTotal');
+  if (lbl) lbl.textContent = fmtVisionTarget(visionTarget);
+
+  const sorted = [...data].filter(p => visionBase(p) > 0).sort((a, b) => visionBase(b) - visionBase(a));
+  const labels = [...sorted.map(p => p.leveraged && p.leverage ? `${p.ticker} ${p.leverage.toFixed(1)}x` : p.ticker), 'Cash'];
+  const names  = [...sorted.map(p => p.leveraged && p.leverage ? `${p.ticker} ${p.leverage.toFixed(1)}x` : chartLabel(p)), 'Cash'];
+  const values = [...sorted.map(p => visionBase(p) * mult), Math.max(0, cash)];
+  const colors = [...sorted.map(p => p.color), CASH_COLOR];
+  const total  = values.reduce((a, b) => a + b, 0);
+
+  if (visionDonutChart) visionDonutChart.destroy();
+  visionDonutChart = new Chart(canvas, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: th.pageBg, borderWidth: 3, hoverBorderWidth: 4 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            color: th.text, font: { family: 'Inter', size: 12 }, padding: 14,
+            boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'rect',
+            generateLabels: chart => chart.data.labels.map((l, i) => ({
+              text: names[i], fillStyle: colors[i], strokeStyle: colors[i], lineWidth: 0,
+              hidden: false, index: i, datasetIndex: 0, pointStyle: 'rect', fontColor: th.text,
+            })),
+          }
+        },
+        tooltip: {
+          backgroundColor: th.tooltipBg, borderColor: th.tooltipBorder, borderWidth: 1,
+          titleColor: th.text, bodyColor: th.body, padding: 12,
+          callbacks: {
+            title: items => items.length ? names[items[0].dataIndex] : '',
+            label: ctx => {
+              const pct = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : '0.0';
+              return `  ${fmtUsd(ctx.raw)}  (${pct}%)`;
+            },
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderVisionTab(data) {
+  const panel = document.getElementById('tab-vision');
+  if (!panel) return;
+  data = data || computeAll();
+  renderVisionBar();
+  renderVisionSummary(data);
+  renderVisionTable(data);
+  renderVisionCash(data);
+  // Chart.js cannot size a canvas inside a hidden panel — switchTab redraws on the way in
+  if (panel.classList.contains('active')) renderVisionDonut(data);
+}
+
 function renderAllSafe() {
   if (isEditingField()) { _renderDeferred = true; return; }
   renderAll();
@@ -9670,6 +10046,7 @@ function renderAll() {
   renderCharts(data);
   renderHistorySection();
   renderClosedTrades();
+  renderVisionTab(data);
   renderThesis(data);
   renderPrivateTab();
   renderAirdropTab();
