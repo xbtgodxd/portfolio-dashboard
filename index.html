@@ -4,59 +4,62 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Portfolio Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #07070f;
-  --bg2:      #0c0c1a;
-  --bg3:      #10101f;
-  --bg4:      #141428;
-  --bghov:    #18183a;
-  --border:   #1a1a35;
-  --border2:  #252548;
-  --cyan:     #00d4ff;
-  --cyand:    rgba(0,212,255,0.12);
-  --purple:   #8b5cf6;
-  --purpled:  rgba(139,92,246,0.12);
-  --green:    #00e676;
-  --greend:   rgba(0,230,118,0.08);
-  --red:      #ff4757;
-  --redd:     rgba(255,71,87,0.08);
-  --amber:    #ffd60a;
-  --amberd:   rgba(255,214,10,0.08);
-  --text:     #e8edf5;
-  --text2:    #8892a8;
-  --text3:    #4a5268;
-  --mono:     'JetBrains Mono', monospace;
-  --sans:     'Inter', sans-serif;
-  --header-bg: linear-gradient(135deg, #0c0c1f 0%, #0f0f25 100%);
+  --bg:       #0e0f11;
+  --bg2:      #16181b;
+  --bg3:      #1a1c20;
+  --bg4:      #202328;
+  --bghov:    #272b31;
+  --border:   #25282e;
+  --border2:  #353940;
+  --cyan:     #e8b04a;
+  --cyand:    rgba(232,176,74,0.12);
+  --purple:   #a797d9;
+  --purpled:  rgba(167,151,217,0.12);
+  --green:    #4fd08a;
+  --greend:   rgba(79,208,138,0.08);
+  --red:      #f2645e;
+  --redd:     rgba(242,100,94,0.08);
+  --amber:    #8fb0d8;
+  --amberd:   rgba(143,176,216,0.08);
+  --text:     #e6e6e3;
+  --text2:    #a0a4ab;
+  --text3:    #7a7f88;
+  --mono:     'IBM Plex Mono', monospace;
+  --sans:     'IBM Plex Sans', sans-serif;
+  --header-bg: #131518;
 }
 
 /* ── LIGHT THEME ── */
+/* Position and sector colors are chosen for the dark page and wash out on white. Darkening
+   them here covers every badge and ticker dot without a second color table. */
+body.light .asset-dot, body.light .sector-badge, body.light .thesis-dot { filter: brightness(0.6) saturate(1.3); }
 body.light {
-  --bg:       #dfe3ec;
+  --bg:       #e7e8ea;
   --bg2:      #ffffff;
-  --bg3:      #edf0f6;
-  --bg4:      #dfe4ee;
-  --bghov:    #d0d7e6;
-  --border:   #c8cfdd;
-  --border2:  #a8b2c9;
-  --cyan:     #015d8c;
-  --cyand:    rgba(1,93,140,0.12);
-  --purple:   #5c2fc4;
-  --purpled:  rgba(92,47,196,0.12);
-  --green:    #067a46;
-  --greend:   rgba(6,122,70,0.12);
-  --red:      #c31b2e;
-  --redd:     rgba(195,27,46,0.10);
-  --amber:    #8a5c06;
-  --amberd:   rgba(138,92,6,0.13);
-  --text:     #0d1220;
-  --text2:    #333d52;
-  --text3:    #5f6a84;
+  --bg3:      #f2f3f4;
+  --bg4:      #e4e6e9;
+  --bghov:    #d9dce0;
+  --border:   #d0d3d8;
+  --border2:  #aeb3bb;
+  --cyan:     #8a6200;
+  --cyand:    rgba(138,98,0,0.12);
+  --purple:   #5b4899;
+  --purpled:  rgba(91,72,153,0.12);
+  --green:    #17703f;
+  --greend:   rgba(23,112,63,0.12);
+  --red:      #b3261e;
+  --redd:     rgba(179,38,30,0.10);
+  --amber:    #2d5b8a;
+  --amberd:   rgba(45,91,138,0.13);
+  --text:     #111418;
+  --text2:    #353a42;
+  --text3:    #525862;
   --header-bg: #ffffff;
 }
 
@@ -474,7 +477,7 @@ input[type="range"] { accent-color: var(--cyan); }
 .alloc-bar {
   height: 4px;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--cyan), var(--purple));
+  background: var(--cyan);
   min-width: 2px;
   transition: width 0.4s ease;
 }
@@ -780,8 +783,8 @@ textarea.update-text {
 textarea.form-input { min-height: 80px; resize: vertical; }
 .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
 .btn-primary {
-  background: linear-gradient(135deg, var(--cyan), var(--purple));
-  border: none; border-radius: 8px; color: #fff;
+  background: var(--text);
+  border: none; border-radius: 8px; color: var(--bg2);
   font-family: var(--sans); font-size: 13px; font-weight: 600;
   padding: 10px 20px; cursor: pointer; transition: opacity 0.15s;
 }
@@ -806,6 +809,14 @@ textarea.form-input { min-height: 80px; resize: vertical; }
   margin-bottom: 20px;
   flex-wrap: wrap;
 }
+.vision-target-input {
+  font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--cyan);
+  background: var(--cyand); border: 1px solid var(--cyan); border-radius: 8px;
+  padding: 4px 10px; width: 150px; text-align: right; cursor: text;
+  transition: box-shadow 0.15s;
+}
+.vision-target-input:hover { box-shadow: 0 0 0 2px var(--cyand); }
+.vision-target-input:focus { outline: none; box-shadow: 0 0 0 3px var(--cyand); }
 .fx-label {
   font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
   text-transform: uppercase; color: var(--text3);
@@ -863,7 +874,7 @@ textarea.form-input { min-height: 80px; resize: vertical; }
   position: relative;
 }
 .cash-chip:hover { border-color: var(--border2); }
-.cash-chip-linked { border-color: rgba(0,212,255,0.25); background: linear-gradient(135deg, var(--bg3), rgba(0,212,255,0.04)); }
+.cash-chip-linked { border-color: var(--cyand); background: var(--bg3); }
 .cash-chip-label { font-size: 12px; font-weight: 600; color: var(--text2); }
 .cash-chip-amount { font-family: var(--mono); font-size: 12px; color: var(--text); }
 .cash-chip-usd { font-family: var(--mono); font-size: 11px; color: var(--text3); }
@@ -1073,7 +1084,7 @@ tr:hover .pencil-btn { opacity: 1; }
   cursor: pointer; font-family: var(--sans); transition: all 0.15s;
   display: flex; align-items: center; gap: 6px; white-space: nowrap;
 }
-.add-asset-btn:hover { background: rgba(0,212,255,0.2); }
+.add-asset-btn:hover { background: var(--cyand); }
 /* "+ Add ▾" on the Holdings header: one button, the five position types in a menu */
 .add-menu { position: relative; }
 .add-menu-caret { transition: transform 0.15s; }
@@ -1168,24 +1179,24 @@ tr:hover .pencil-btn { opacity: 1; }
   letter-spacing: 0.01em;
 }
 .tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+.tab-btn.active { color: var(--text); border-bottom-color: var(--cyan); font-weight: 600; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
 /* ── AIRDROP TAB ── */
 .airdrop-status { display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:0.03em;white-space:nowrap; }
-.airdrop-status.farming  { background:rgba(0,212,255,0.12);color:var(--cyan); }
-.airdrop-status.claimable{ background:rgba(0,230,118,0.14);color:var(--green); }
-.airdrop-status.claimed  { background:rgba(139,92,246,0.14);color:var(--purple); }
-.airdrop-status.missed   { background:rgba(255,71,87,0.10);color:var(--red); }
+.airdrop-status.farming  { background:var(--cyand);color:var(--cyan); }
+.airdrop-status.claimable{ background:var(--greend);color:var(--green); }
+.airdrop-status.claimed  { background:var(--purpled);color:var(--purple); }
+.airdrop-status.missed   { background:var(--redd);color:var(--red); }
 .airdrop-status .dot { width:6px;height:6px;border-radius:50%;background:currentColor; }
 .airdrop-status.farming .dot  { animation:pulse 1.8s ease-in-out infinite; }
 @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.35} }
 .tier-badge { display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;font-size:11px;font-weight:800;letter-spacing:0.02em; }
 .tier-S { background:rgba(255,214,10,0.18);color:var(--amber); }
-.tier-A { background:rgba(0,230,118,0.14);color:var(--green); }
-.tier-B { background:rgba(0,212,255,0.14);color:var(--cyan); }
-.tier-C { background:rgba(139,92,246,0.14);color:var(--purple); }
+.tier-A { background:var(--greend);color:var(--green); }
+.tier-B { background:var(--cyand);color:var(--cyan); }
+.tier-C { background:var(--purpled);color:var(--purple); }
 .tier-unknown { background:var(--bg3);color:var(--text3); }
 .chain-chip { display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;background:var(--bg3);color:var(--text2);letter-spacing:0.04em; }
 .airdrop-table { width:100%;border-collapse:collapse;font-size:13px; }
@@ -2641,7 +2652,7 @@ const DEFAULT_CASH = [
   { id: 1, label: "Cash", amount: 100, currency: "USD" },
 ];
 
-const CASH_COLOR = '#ffd60a'; // reserved for Cash slice — never assigned to positions
+const CASH_COLOR = '#8fb0d8'; // reserved for Cash slice — never assigned to positions
 // Slice/dot colours, in assignment order. Chosen by farthest-point search in OKLab rather
 // than by eye: the previous list varied hue but not lightness, so violet/purple (#8b5cf6 vs
 // #9945ff) sat 0.046 apart perceptually and neighbouring pie slices blurred together. These
@@ -3469,16 +3480,16 @@ function applyTheme() {
 // Colors the charts must read at render time (Chart.js can't use CSS variables)
 function chartTheme() {
   return theme === 'light'
-    ? { text: '#0d1220', body: '#333d52', muted: '#5f6a84', grid: '#c8cfdd',
-        tooltipBg: '#ffffff', tooltipBorder: '#a8b2c9', pageBg: '#dfe3ec',
+    ? { text: '#111418', body: '#353a42', muted: '#525862', grid: '#d0d3d8',
+        tooltipBg: '#ffffff', tooltipBorder: '#aeb3bb', pageBg: '#e7e8ea',
         labelBg: 'rgba(255,255,255,0.85)', labelText: 'rgba(13,18,32,0.95)', divider: 'rgba(20,26,42,0.55)',
-        negBand: 'rgba(195,27,46,0.10)', negEdge: 'rgba(195,27,46,0.35)', negText: 'rgba(195,27,46,0.85)',
-        accent: '#015d8c', accent2: '#5c2fc4', accentFillTop: 'rgba(1,93,140,0.22)', accentFillBottom: 'rgba(1,93,140,0.0)' }
-    : { text: '#e8edf5', body: '#8892a8', muted: '#4a5268', grid: '#1a1a35',
-        tooltipBg: '#10101f', tooltipBorder: '#252548', pageBg: '#07070f',
+        negBand: 'rgba(179,38,30,0.10)', negEdge: 'rgba(179,38,30,0.35)', negText: 'rgba(179,38,30,0.85)',
+        accent: '#8a6200', accent2: '#5b4899', accentFillTop: 'rgba(138,98,0,0.22)', accentFillBottom: 'rgba(138,98,0,0.0)' }
+    : { text: '#e6e6e3', body: '#a0a4ab', muted: '#7a7f88', grid: '#25282e',
+        tooltipBg: '#1a1c20', tooltipBorder: '#353940', pageBg: '#0e0f11',
         labelBg: 'rgba(7,7,15,0.65)', labelText: 'rgba(255,255,255,0.9)', divider: 'rgba(255,255,255,0.5)',
-        negBand: 'rgba(255,71,87,0.10)', negEdge: 'rgba(255,71,87,0.30)', negText: 'rgba(255,71,87,0.80)',
-        accent: '#00d4ff', accent2: '#8b5cf6', accentFillTop: 'rgba(0,212,255,0.25)', accentFillBottom: 'rgba(0,212,255,0.0)' };
+        negBand: 'rgba(242,100,94,0.10)', negEdge: 'rgba(242,100,94,0.30)', negText: 'rgba(242,100,94,0.80)',
+        accent: '#e8b04a', accent2: '#a797d9', accentFillTop: 'rgba(232,176,74,0.25)', accentFillBottom: 'rgba(232,176,74,0.0)' };
 }
 
 function setHomeCurrency(cur) {
@@ -7245,7 +7256,7 @@ function renderAssetDonut(data, cash, th) {
           const lx  = cx + Math.cos(mid) * midR;
           const ly  = cy + Math.sin(mid) * midR;
           const txt = label.split(' ').slice(1).join(' ');
-          ctx.font = 'bold 8px "JetBrains Mono",monospace';
+          ctx.font = 'bold 8px "IBM Plex Mono",monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           const tw = ctx.measureText(txt).width;
@@ -7285,7 +7296,7 @@ function renderAssetDonut(data, cash, th) {
           position: 'right',
           labels: {
             color: th.text,
-            font: { family: 'Inter', size: 12 },
+            font: { family: 'IBM Plex Sans', size: 12 },
             padding: 14,
             boxWidth: 10,
             boxHeight: 10,
@@ -7414,7 +7425,7 @@ function renderGroupedDonut(data, cash, th, keyOf, colorOf, order) {
           position: 'right',
           labels: {
             color: th.text,
-            font: { family: 'Inter', size: 12 },
+            font: { family: 'IBM Plex Sans', size: 12 },
             padding: 14,
             boxWidth: 10,
             boxHeight: 10,
@@ -7521,8 +7532,8 @@ function renderCharts(data) {
       labels: barData.map(g => g.label),
       datasets: [{
         data: barData.map(g => g.pct),
-        backgroundColor: barData.map(g => g.pct >= 0 ? 'rgba(0,230,118,0.7)' : 'rgba(255,71,87,0.7)'),
-        borderColor: barData.map(g => g.pct >= 0 ? '#00e676' : '#ff4757'),
+        backgroundColor: barData.map(g => g.pct >= 0 ? 'rgba(79,208,138,0.7)' : 'rgba(242,100,94,0.7)'),
+        borderColor: barData.map(g => g.pct >= 0 ? '#4fd08a' : '#f2645e'),
         borderWidth: 1,
         borderRadius: 4,
       }]
@@ -7553,14 +7564,14 @@ function renderCharts(data) {
           grid: { color: th.grid },
           ticks: {
             color: th.muted,
-            font: { family: 'JetBrains Mono', size: 11 },
+            font: { family: 'IBM Plex Mono', size: 11 },
             callback: v => v + '%'
           },
           border: { color: th.grid }
         },
         y: {
           grid: { display: false },
-          ticks: { color: th.body, font: { family: 'JetBrains Mono', size: 12 } },
+          ticks: { color: th.body, font: { family: 'IBM Plex Mono', size: 12 } },
           border: { color: th.grid }
         }
       }
@@ -8307,7 +8318,7 @@ function renderHistorySection() {
         ctx.setLineDash([]);
         if (r - l >= 52) {
           ctx.fillStyle = th.negText;
-          ctx.font = "9px 'JetBrains Mono', monospace";
+          ctx.font = "9px 'IBM Plex Mono', monospace";
           ctx.textAlign = 'center';
           ctx.textBaseline = 'bottom';
           ctx.fillText('underwater', (l + r) / 2, area.bottom - 4);
@@ -8329,7 +8340,7 @@ function renderHistorySection() {
       plugins: {
         legend: {
           display: showLegend,
-          labels: { color: th.body, font: { family: 'JetBrains Mono', size: 10 }, boxWidth: 16, padding: 16 }
+          labels: { color: th.body, font: { family: 'IBM Plex Mono', size: 10 }, boxWidth: 16, padding: 16 }
         },
         tooltip: {
           backgroundColor: th.tooltipBg, borderColor: th.tooltipBorder, borderWidth: 1,
@@ -8355,7 +8366,7 @@ function renderHistorySection() {
       scales: {
         x: {
           grid: { color: th.grid },
-          ticks: { color: th.muted, font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 18, maxRotation: 45 },
+          ticks: { color: th.muted, font: { family: 'IBM Plex Mono', size: 10 }, maxTicksLimit: 18, maxRotation: 45 },
           border: { color: th.grid }
         },
         y: {
@@ -8365,7 +8376,7 @@ function renderHistorySection() {
             // axis, 1x on the log one. Draw it brighter than the rest of the grid.
             color: c => (btcCompareMode && c.tick && c.tick.value === (logMode ? 1 : 0)) ? th.divider : th.grid
           },
-          ticks: { color: th.muted, font: { family: 'JetBrains Mono', size: 11 }, callback: yTickCb },
+          ticks: { color: th.muted, font: { family: 'IBM Plex Mono', size: 11 }, callback: yTickCb },
           border: { color: th.grid }
         }
       }
@@ -8665,7 +8676,7 @@ function renderPrivateSplitChart() {
     data: {
       labels: ['Company Portfolio', 'Private'],
       datasets: [{ data: [companyTotal, privateTotal],
-        backgroundColor: ['rgba(0,212,255,0.85)', 'rgba(139,92,246,0.85)'],
+        backgroundColor: ['rgba(232,176,74,0.85)', 'rgba(167,151,217,0.85)'],
         borderColor:     [th.pageBg, th.pageBg],
         borderWidth: 2, hoverOffset: 4 }]
     },
@@ -8678,8 +8689,8 @@ function renderPrivateSplitChart() {
   });
 
   document.getElementById('privateSplitLegend').innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(0,212,255,0.85);display:inline-block"></span><span style="color:var(--text2)">Company</span><span style="font-family:var(--mono);color:var(--cyan);margin-left:4px">${companyPct}%</span></div>
-    <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(139,92,246,0.85);display:inline-block"></span><span style="color:var(--text2)">Private</span><span style="font-family:var(--mono);color:#8b5cf6;margin-left:4px">${privatePct}%</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(232,176,74,0.85);display:inline-block"></span><span style="color:var(--text2)">Company</span><span style="font-family:var(--mono);color:var(--cyan);margin-left:4px">${companyPct}%</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(167,151,217,0.85);display:inline-block"></span><span style="color:var(--text2)">Private</span><span style="font-family:var(--mono);color:#8b5cf6;margin-left:4px">${privatePct}%</span></div>
     <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text3)">${fmtPriv(combined)} total</div>
   `;
 }
@@ -9707,7 +9718,6 @@ function isEditingField() {
 // its equity, not its notional, and gets no target price: at 2.3x the price does not have to
 // move 18x for the equity to. Same for an option, whose payoff is not linear in the price.
 
-const VISION_PRESETS = [1e6, 2e6, 5e6, 1e7];
 let visionTarget = 1e6;
 let visionDonutChart = null;
 
@@ -9750,11 +9760,10 @@ function parseVisionAmount(raw) {
   return isFinite(n) ? n * scale : NaN;
 }
 
-const fmtVisionTarget = v =>
-    v >= 1e9 ? '$' + Number((v / 1e9).toFixed(2)) + 'B'
-  : v >= 1e6 ? '$' + Number((v / 1e6).toFixed(2)) + 'M'
-  : v >= 1e3 ? '$' + Number((v / 1e3).toFixed(1)) + 'K'
-             : '$' + Math.round(v);
+// Written out in full with Danish dot grouping — $500.000, not $500K. His call.
+const fmtVisionTarget = v => '$' + Math.round(v).toLocaleString('da-DK');
+// Same, for every other amount on the tab — those are holdings, so privacy mode hides them.
+const fmtVisionUsd = v => privacyMode ? '$•••••' : (v < 0 ? '-' : '') + fmtVisionTarget(Math.abs(v));
 
 // The target and its multiplier are two sides of one equation: show both and anyone reading
 // over his shoulder in privacy mode can divide one by the other and have the net worth. The
@@ -9774,31 +9783,22 @@ function renderVisionBar() {
   if (!bar) return;
   bar.className = 'fx-bar';
   bar.style.display = 'flex';
-  // Built once, then only the parts that change are touched. Rebuilding the innerHTML on
-  // every render would tear a preset button out from under a click that started while the
-  // custom field still had focus - the field blurs, the bar redraws, the click lands on
-  // nothing, and the button looks broken every other time you use it.
+  // Built once, then only the value is touched, so a re-render never swaps the field out
+  // while he is typing in it.
   if (!bar.firstChild) {
     bar.innerHTML = `
       <span class="fx-label">Target</span>
       <div class="fx-divider"></div>
-      ${VISION_PRESETS.map(v => `<button class="edit-btn" id="visionPreset-${v}" onclick="setVisionTarget(${v})">${fmtVisionTarget(v)}</button>`).join('')}
-      <div class="fx-divider"></div>
-      <span style="font-size:11px;color:var(--text3)">custom</span>
-      <input id="visionTargetInput" class="price-editable" style="width:100px;text-align:right"
+      <input id="visionTargetInput" class="vision-target-input"
         onblur="setVisionTarget(this.value)"
         onkeydown="if(event.key==='Enter')this.blur()"
-        title="Any amount — 1m, 2.5m, 750k, 1b or 1500000" />
+        title="Any amount — 1.000.000, 2.500.000, or short: 1m, 750k" />
       <div class="fx-divider"></div>
       <span class="fx-status">units never change · only prices</span>
     `;
   }
   const input = document.getElementById('visionTargetInput');
   if (input && document.activeElement !== input) input.value = fmtVisionTarget(visionTarget);
-  VISION_PRESETS.forEach(v => {
-    const b = document.getElementById('visionPreset-' + v);
-    if (b) b.classList.toggle('active', v === visionTarget);
-  });
 }
 
 function renderVisionSummary(data) {
@@ -9828,18 +9828,18 @@ function renderVisionSummary(data) {
     </div>
     <div class="card accent-purple">
       <div class="card-label">Gap to Target</div>
-      <div class="card-value">${gap >= 0 ? '+' : ''}${fmtUsd(gap)}</div>
-      <div class="card-sub">${fmtUsd(now)} today</div>
+      <div class="card-value">${gap >= 0 ? '+' : ''}${fmtVisionUsd(gap)}</div>
+      <div class="card-sub">${fmtVisionUsd(now)} today</div>
     </div>
     <div class="card accent-amber">
       <div class="card-label">Cash at Target</div>
-      <div class="card-value" style="font-size:20px">${fmtUsd(cashNow * mult)}</div>
+      <div class="card-value" style="font-size:20px">${fmtVisionUsd(cashNow * mult)}</div>
       <div class="card-sub">${cashPct.toFixed(1)}% of portfolio — unchanged</div>
     </div>
     <div class="card accent-green">
       <div class="card-label">Biggest Line</div>
       <div class="card-value green" style="font-size:18px">${top ? escHtml(chartLabel(top.p)) : '—'}</div>
-      <div class="card-sub green">${top ? fmtUsd(top.v) : ''}</div>
+      <div class="card-sub green">${top ? fmtVisionUsd(top.v) : ''}</div>
     </div>
   `;
 }
@@ -9891,16 +9891,15 @@ function renderVisionTable(data) {
       <td class="right">
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
           <span class="num" style="color:var(--text2)">${p.physical ? '—' : (privacyMode ? '•••••' : fmtUnits(p.units))}</span>
-          ${p.physical ? '' : `<span class="lev-sub">unchanged</span>`}
         </div>
       </td>
       <td class="right">
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
-          <span class="num" style="color:var(--text2)">${fmtUsd(base)}</span>
+          <span class="num" style="color:var(--text2)">${fmtVisionUsd(base)}</span>
           ${p.leveraged ? `<span class="lev-sub">equity${p.hasLinkedCash ? ' · margin from cash' : ' · P&amp;L only'}</span>` : ''}
         </div>
       </td>
-      <td class="right"><span class="num" style="font-weight:600">${fmtUsd(base * mult)}</span></td>
+      <td class="right"><span class="num" style="font-weight:600">${fmtVisionUsd(base * mult)}</span></td>
       <td class="right">
         <div class="bar-wrap" style="justify-content:flex-end">
           <span class="num" style="font-size:12px;color:var(--text2);min-width:36px;text-align:right">${allocPct.toFixed(1)}%</span>
@@ -9929,7 +9928,7 @@ function renderVisionCash(data) {
         <div class="section-title">Cash &amp; Liquidity at Target</div>
         <div>
           <span class="cash-total-label">Total</span>
-          <span class="cash-total">${fmtUsd(total)}</span>
+          <span class="cash-total">${fmtVisionUsd(total)}</span>
         </div>
       </div>
       <div class="cash-chips">
@@ -9947,7 +9946,7 @@ function renderVisionCash(data) {
           return `
           <div class="cash-chip">
             <span class="cash-chip-label">${escHtml(c.label)}</span>
-            <span class="cash-chip-amount">${fmtUsd(usd * mult)}</span>
+            <span class="cash-chip-amount">${fmtVisionUsd(usd * mult)}</span>
           </div>`;
         }).join('')}
       </div>
@@ -9985,7 +9984,7 @@ function renderVisionDonut(data) {
         legend: {
           position: 'right',
           labels: {
-            color: th.text, font: { family: 'Inter', size: 12 }, padding: 14,
+            color: th.text, font: { family: 'IBM Plex Sans', size: 12 }, padding: 14,
             boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'rect',
             generateLabels: chart => chart.data.labels.map((l, i) => ({
               text: names[i], fillStyle: colors[i], strokeStyle: colors[i], lineWidth: 0,
@@ -10000,7 +9999,7 @@ function renderVisionDonut(data) {
             title: items => items.length ? names[items[0].dataIndex] : '',
             label: ctx => {
               const pct = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : '0.0';
-              return `  ${fmtUsd(ctx.raw)}  (${pct}%)`;
+              return `  ${fmtVisionUsd(ctx.raw)}  (${pct}%)`;
             },
           }
         }
