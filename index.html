@@ -9768,6 +9768,8 @@ const fmtVisionUsd = v => privacyMode ? '$•••••' : (v < 0 ? '-' : '') 
 // The target and its multiplier are two sides of one equation: show both and anyone reading
 // over his shoulder in privacy mode can divide one by the other and have the net worth. The
 // target is a goal, not a holding, so it stays visible and the multiplier is what gets hidden.
+// Prices at target are hidden too: price at target ÷ price now (which is never masked) is the
+// multiplier again.
 const fmtVisionSecret = s => privacyMode ? '•••••' : s;
 
 function setVisionTarget(v) {
@@ -9892,7 +9894,7 @@ function renderVisionTable(data) {
       <td class="right">
         ${priceOk
           ? `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
-               <span class="num" style="color:var(--cyan);font-weight:600">${fmtPriceNum(p.currentPrice * mult)}</span>${cur}
+               <span class="num" style="color:var(--cyan);font-weight:600">${fmtVisionSecret(fmtPriceNum(p.currentPrice * mult))}</span>${cur}
              </div>`
           : `<span class="num" style="color:var(--text3)" title="A price times the multiplier would be wrong here — see the note under the table">—*</span>`}
       </td>
