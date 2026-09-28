@@ -9819,7 +9819,7 @@ function renderVisionSummary(data) {
   el.innerHTML = `
     <div class="card accent-cyan">
       <div class="card-label" style="display:flex;align-items:center;justify-content:space-between">
-        Vision Net Worth
+        Net Worth
         <button onclick="togglePrivacy()" title="${privacyMode ? 'Show amounts' : 'Hide amounts'}" style="background:none;border:none;cursor:pointer;padding:0;line-height:1;color:${privacyMode ? 'var(--cyan)' : 'var(--text3)'}">
           ${privacyMode
             ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
@@ -10076,6 +10076,27 @@ if (activeTab !== 'portfolio') switchTab(activeTab);
 updateClock();
 setInterval(updateClock, 1000);
 setInterval(fetchPrices, 60000);
+
+// Two tabs open on the dashboard share one storage, but each keeps its own copy in memory.
+// Without this, a tab left open in the background wrote its old copy back on the next price
+// refresh (every 60s) - a position closed in the other tab came back (2026-09-28, Bittensor
+// twice). The browser fires 'storage' only in the OTHER tabs, never the one that saved, so
+// this adopts the newer data instead of overwriting it. It never saves, so two tabs can't
+// ping-pong. The undo history is dropped: it holds snapshots from before the other tab's change.
+function onOtherTabSaved(e) {
+  if (e.key === SYNC_KEY) { loadSyncCfg(); return; }
+  if (e.key !== 'portfolio-dashboard-template' || !e.newValue) return;
+  const keepTab = activeTab;
+  loadState();
+  activeTab = keepTab;
+  undoStack = []; redoStack = [];
+  refreshUndoBtn(); refreshRedoBtn();
+  document.body.classList.toggle('light', theme === 'light');
+  applyHomeCurrencyLabels();
+  applyDashboardName();
+  renderAllSafe();
+}
+if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('storage', onOtherTabSaved);
 </script>
 </body>
 </html>
