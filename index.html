@@ -3266,6 +3266,44 @@ const YAHOO_FAIL_MSG = 'Could not get this price from Yahoo (the free relay it g
 function cgUnknownMsg(id, canEdit) {
   return `CoinGecko has no coin with the ID “${id}”` + (canEdit ? ' — fix it in Edit.' : ' — remove it and add it again; the add form now finds the ID from the ticker.');
 }
+// CoinGecko's free API counts requests per internet connection and starts refusing them
+// (429 "rate limit", or a 403 "Request blocked" page) when that connection asks too often.
+// 2026-09-29 it refused every call from Jonas's connection for minutes on end, and DRV and
+// ETHFI sat still with no flag, because a refusal was treated like "offline". So when
+// CoinGecko refuses, the same ids go to DefiLlama's price API instead: read-only, no key, it
+// takes CoinGecko ids as they are. Returns { prices: {id: usd}, answered } - answered means
+// CoinGecko itself replied, so an id missing from it really is a wrong id.
+const PRICE_FALLBACK_MAX_AGE_S = 2 * 3600; // older than this is not a current price
+const CG_REFUSED_MSG = 'Could not get a price from CoinGecko (it limits how often one internet connection may ask) or from the backup source — showing the last price. It picks up again by itself.';
+async function fetchCgUsd(ids) {
+  const pick = (id, v) => (typeof v === 'number' && isFinite(v) && v > 0) ? v : null;
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`);
+    if (res.ok !== false) {
+      const data = await res.json();
+      if (data && typeof data === 'object' && !data.status) { // { status } = rate limited
+        const prices = {};
+        ids.forEach(id => { const v = pick(id, data[id]?.usd); if (v) prices[id] = v; });
+        return { prices, answered: true };
+      }
+    }
+  } catch (_) { /* the 403 page is not JSON, or offline - try the backup */ }
+  try {
+    const res  = await fetch('https://coins.llama.fi/prices/current/' + ids.map(id => 'coingecko:' + encodeURIComponent(id)).join(','));
+    const data = await res.json();
+    const coins = data && typeof data === 'object' ? data.coins : null;
+    const prices = {};
+    if (coins && typeof coins === 'object') {
+      const now = Date.now() / 1000;
+      ids.forEach(id => {
+        const c = coins['coingecko:' + id];
+        const v = c && pick(id, c.price);
+        if (v && typeof c.timestamp === 'number' && now - c.timestamp < PRICE_FALLBACK_MAX_AGE_S) prices[id] = v;
+      });
+    }
+    return { prices, answered: false };
+  } catch (_) { return { prices: {}, answered: false }; }
+}
 function priceWarnFor(p) {
   if (!p || p.physical || p.skin || p.pokemon || p.option) return null;
   if (!resolvedCgId(p) && !p.yahooTicker) return 'No price source, so this price only changes when you edit it. Add a CoinGecko ID (crypto) or a Yahoo ticker (stocks) in Edit.';
@@ -4245,34 +4283,32 @@ async function fetchPrices() {
     if (cgId) { p._resolvedCgId = cgId; cgMap[cgId] = true; }
   });
   const cgIds = Object.keys(cgMap);
+  const fresh = new Set(); // positions that got a new price this round
   if (cgIds.length) {
-    try {
-      const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgIds.join(',')}&vs_currencies=usd`);
-      const data = await res.json();
-      // An answer that leaves an id out means CoinGecko has no such coin. A rate-limit answer
-      // ({ status: {...} }) says nothing about the ids, so it flags nothing.
-      const answered = data && typeof data === 'object' && !data.status;
-      portfolio.forEach(p => {
-        const id = p._resolvedCgId;
-        delete p._resolvedCgId;
-        if (!id) return;
-        const price = data[id]?.usd;
-        if (price && typeof price === 'number' && isFinite(price) && price > 0) {
-          const prev = p.currentPrice;
-          // Reject if price is >10× or <0.1× the stored value — an API glitch, or the wrong coin
-          const ratio = prev > 0 ? price / prev : 1;
-          if (ratio < 10 && ratio > 0.1) {
-            p.currentPrice = price;
-            updated = true;
-            setPriceWarn('p' + p.posId, null);
-          } else {
-            setPriceWarn('p' + p.posId, `CoinGecko says $${fmtPriceNum(price)} for “${id}” — more than 10× off the last price, so it was ignored. Probably the wrong coin: check the CoinGecko ID in Edit.`);
-          }
-        } else if (answered) {
-          setPriceWarn('p' + p.posId, cgUnknownMsg(id, true));
+    const { prices, answered } = await fetchCgUsd(cgIds);
+    portfolio.forEach(p => {
+      const id = p._resolvedCgId;
+      delete p._resolvedCgId;
+      if (!id) return;
+      const price = prices[id];
+      if (price) {
+        const prev = p.currentPrice;
+        // Reject if price is >10× or <0.1× the stored value — an API glitch, or the wrong coin
+        const ratio = prev > 0 ? price / prev : 1;
+        if (ratio < 10 && ratio > 0.1) {
+          p.currentPrice = price;
+          updated = true;
+          fresh.add(p);
+          setPriceWarn('p' + p.posId, null);
+        } else {
+          setPriceWarn('p' + p.posId, `CoinGecko says $${fmtPriceNum(price)} for “${id}” — more than 10× off the last price, so it was ignored. Probably the wrong coin: check the CoinGecko ID in Edit.`);
         }
-      });
-    } catch(e) { console.warn('CoinGecko fetch failed:', e); }
+      } else if (answered) {
+        setPriceWarn('p' + p.posId, cgUnknownMsg(id, true));
+      } else {
+        setPriceWarn('p' + p.posId, CG_REFUSED_MSG);
+      }
+    });
   }
 
   // Binance cross-check — verify CoinGecko prices against Binance for tokens with a known USDT pair
@@ -4295,7 +4331,9 @@ async function fetchPrices() {
           const bnPrice = parseFloat(rawPrice);
           if (!bnPrice || !isFinite(bnPrice) || bnPrice <= 0) return;
           const cgPrice = p.currentPrice;
-          if (!cgPrice || cgPrice <= 0) { p.currentPrice = bnPrice; updated = true; setPriceWarn('p' + p.posId, null); return; }
+          // No fresh CoinGecko price this round (refused, or ignored): Binance's is the current one.
+          // Before 2026-09-29 only a >5% gap switched to it, so a refused ETHFI kept its old price.
+          if (!cgPrice || cgPrice <= 0 || !fresh.has(p)) { p.currentPrice = bnPrice; updated = true; setPriceWarn('p' + p.posId, null); return; }
           const divergence = Math.abs(bnPrice - cgPrice) / bnPrice;
           if (divergence > 0.05) {
             // CoinGecko and Binance disagree by more than 5% — trust Binance
@@ -9012,17 +9050,12 @@ async function fetchPrivateCryptoPrices() {
   // Crypto — batch via CoinGecko (USD), ids through privateCgId (the shortcut list wins)
   const cryptoAssets = privateAssets.filter(a => a.category === 'Crypto' && privateCgId(a));
   if (cryptoAssets.length) {
-    const ids = [...new Set(cryptoAssets.map(privateCgId))].join(',');
-    try {
-      const res  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
-      const data = await res.json();
-      const answered = data && typeof data === 'object' && !data.status; // { status } = rate limited
-      cryptoAssets.forEach(a => {
-        const price = data[privateCgId(a)]?.usd;
-        if (typeof price === 'number' && isFinite(price) && price > 0) { a.currentPrice = price; updated = true; setPriceWarn('a' + a.id, null); }
-        else if (answered) setPriceWarn('a' + a.id, cgUnknownMsg(privateCgId(a), false));
-      });
-    } catch(e) { /* offline — keep the last price, flag nothing */ }
+    const { prices, answered } = await fetchCgUsd([...new Set(cryptoAssets.map(privateCgId))]);
+    cryptoAssets.forEach(a => {
+      const price = prices[privateCgId(a)];
+      if (price) { a.currentPrice = price; updated = true; setPriceWarn('a' + a.id, null); }
+      else setPriceWarn('a' + a.id, answered ? cgUnknownMsg(privateCgId(a), false) : CG_REFUSED_MSG);
+    });
   }
 
   // Stocks / Shares — Yahoo via CORS proxy, one call per holding (native currency)
