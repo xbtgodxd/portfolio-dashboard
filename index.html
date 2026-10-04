@@ -780,6 +780,7 @@ textarea.update-text {
 }
 .form-input:focus { border-color: var(--cyan); }
 .form-input::placeholder { color: var(--text3); }
+.form-input[readonly] { cursor: default; color: var(--text2); border-color: var(--border); }
 textarea.form-input { min-height: 80px; resize: vertical; }
 .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
 .btn-primary {
@@ -5709,6 +5710,7 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedInputLabel').textContent = 'Realized P&L to add (USD)';
     document.getElementById('realizedInputHint').textContent = 'Negative = realized loss. Zero = no change.';
     document.getElementById('realizedInput').value = gain.toFixed(2);
+    document.getElementById('realizedInput').readOnly = false;
     setRealizedInputPrivacy(true);
     document.getElementById('realizedSellPrice').value = p.currentPrice.toFixed(p.currentPrice >= 1 ? 2 : 4);
     document.getElementById('realizedSellPriceCur').textContent = (p.currency && p.currency !== 'USD') ? '(' + p.currency + ')' : '(USD)';
@@ -5727,6 +5729,7 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedInputLabel').textContent = 'Price you\'re adding at';
     document.getElementById('realizedInputHint').textContent = 'Entry price will update to the weighted average.';
     document.getElementById('realizedInput').value = p.currentPrice.toFixed(p.currentPrice >= 1 ? 2 : 4);
+    document.getElementById('realizedInput').readOnly = false;
     document.getElementById('realizedSellPriceRow').style.display = 'none';
     document.getElementById('realizedLogSection').style.display = 'none';
     document.getElementById('realizedModalBox').style.cssText = 'max-width:400px';
@@ -5774,11 +5777,11 @@ function editRealized(posId) {
   _pendingUnits = { posId, newUnits: p.units, oldUnits: p.units, mode: 'editRealized' };
   document.getElementById('realizedModalTitle').textContent = 'Edit Realized P&L';
   document.getElementById('realizedModalDesc').innerHTML =
-    `Manually adjust the locked-in realized P&amp;L for <strong>${p.ticker}</strong>.<br>` +
-    `Set to 0 to clear it entirely.`;
+    `Locked-in realized P&amp;L for <strong>${p.ticker}</strong>.`;
   document.getElementById('realizedInputLabel').textContent = 'Realized P&L (USD)';
-  document.getElementById('realizedInputHint').textContent = 'Negative = realized loss. Zero = clears it.';
+  document.getElementById('realizedInputHint').textContent = 'Updates automatically when you sell.';
   document.getElementById('realizedInput').value = (p.realizedPnl || 0).toFixed(2);
+  document.getElementById('realizedInput').readOnly = true;
   setRealizedInputPrivacy(true);
   document.getElementById('realizedSellPriceRow').style.display = 'none';
   document.getElementById('realizedFundRow').style.display = 'none';
