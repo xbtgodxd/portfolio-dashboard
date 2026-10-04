@@ -2461,7 +2461,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
 
 <!-- REALIZED PNL MODAL -->
 <div class="modal-overlay" id="realizedModal" onclick="if(isBackdropClick(event,this))cancelRealizedModal()">
-  <div class="modal" style="max-width:400px">
+  <div class="modal" id="realizedModalBox" style="max-width:400px">
     <div class="modal-header">
       <div class="modal-title" id="realizedModalTitle">Lock in Realized P&amp;L</div>
       <button class="modal-close" onclick="cancelRealizedModal()">✕</button>
@@ -2486,7 +2486,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     </div>
     <div id="realizedLogSection" style="display:none;margin-bottom:12px">
       <div class="form-label" style="margin-bottom:8px">Trade Log</div>
-      <div id="realizedLogTable"></div>
+      <div id="realizedLogTable" style="overflow-x:auto"></div>
       <div id="realizedLogAvgs" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.6"></div>
       <button class="airdrop-action-btn" style="margin-top:10px" onclick="toggleLogPastTrade()">+ Log past trade</button>
       <div id="logPastTradeForm" style="display:none;margin-top:10px;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">
@@ -5715,6 +5715,7 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedSellPriceRow').style.display = 'block';
     document.getElementById('realizedFundRow').style.display = 'none';
     document.getElementById('realizedLogSection').style.display = 'none';
+    document.getElementById('realizedModalBox').style.cssText = 'max-width:400px';
     document.getElementById('realizedModal').classList.add('open');
   } else if (val > p.units) {
     const addedQty = val - p.units;
@@ -5728,6 +5729,7 @@ function updateUnits(posId, rawVal) {
     document.getElementById('realizedInput').value = p.currentPrice.toFixed(p.currentPrice >= 1 ? 2 : 4);
     document.getElementById('realizedSellPriceRow').style.display = 'none';
     document.getElementById('realizedLogSection').style.display = 'none';
+    document.getElementById('realizedModalBox').style.cssText = 'max-width:400px';
     // populate cash funding row
     const fundSel = document.getElementById('realizedFundCash');
     fundSel.innerHTML = `<option value="">— don't adjust cash —</option>` +
@@ -5782,6 +5784,7 @@ function editRealized(posId) {
   document.getElementById('realizedFundRow').style.display = 'none';
   _logViewPosId = posId;
   document.getElementById('realizedLogSection').style.display = 'block';
+  document.getElementById('realizedModalBox').style.cssText = 'width:620px;max-width:95vw';
   document.getElementById('logPastTradeForm').style.display = 'none';
   document.getElementById('lpt-price-cur').textContent = '(' + (p.currency || 'USD') + ')';
   renderRealizedLog(p);
@@ -5859,7 +5862,7 @@ function renderRealizedLog(p) {
     avgsEl.innerHTML = '';
     return;
   }
-  const cellStyle = 'padding:5px 8px;border-bottom:1px solid var(--border);font-family:var(--mono)';
+  const cellStyle = 'padding:5px 8px;border-bottom:1px solid var(--border);font-family:var(--mono);white-space:nowrap';
   // Kept out of tradeLogAverages on purpose: "avg buyback" means buybacks, not the first buy.
   const openingRow = opening ? `<tr title="Your first buy of this position. Changes made straight in the table's units or entry cells land here too.">
         <td style="${cellStyle};color:var(--text2)">${escHtml(opening.date || '—')}</td>
