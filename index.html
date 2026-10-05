@@ -1390,7 +1390,7 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
         <div class="section-title">Portfolio Allocation</div>
         <div style="display:flex;align-items:center;gap:8px">
-          <button class="edit-btn" id="donutGroupBtn" onclick="toggleDonutGroup()" title="Group the donut by sector instead of by position - shows how much of the book sits in one narrative.">by sector</button>
+          <button class="edit-btn" id="donutGroupBtn" onclick="toggleDonutGroup()" title="Switch the donut between one slice per position and one slice per sector. Options show striped.">by sector</button>
           <button class="edit-btn" id="sectorLookupBtn" onclick="refreshCryptoSectors()" title="Look every coin up in CoinGecko's category database and re-tag its sector. Only touches positions whose sector is still blank or the generic 'Crypto'.">sync sectors</button>
           <span id="donutTotalLabel" style="font-family:var(--mono);font-size:12px;color:var(--text2)"></span>
         </div>
@@ -7247,6 +7247,27 @@ function chartLabel(p) {
 // The allocation donut in its default shape: one slice per open position, plus Cash.
 // Same-ticker spot and perp legs sit adjacent and share a colour, split by a white
 // divider, and the legend/tooltip fold them back into a single combined figure.
+// A striped fill for option slices: the position's colour with thin page-coloured diagonals.
+// Falls back to the plain colour where there is no canvas (tests, very old browsers).
+function optionStripe(color, gap) {
+  try {
+    const c = document.createElement('canvas');
+    const ctx = c.getContext && c.getContext('2d');
+    if (!ctx) return color;
+    c.width = c.height = 8;
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, 8, 8);
+    ctx.strokeStyle = gap;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-2, 2); ctx.lineTo(2, -2);
+    ctx.moveTo(0, 8);  ctx.lineTo(8, 0);
+    ctx.moveTo(6, 10); ctx.lineTo(10, 6);
+    ctx.stroke();
+    return ctx.createPattern(c, 'repeat') || color;
+  } catch (e) { return color; }
+}
+
 function renderAssetDonut(data, cash, th) {
   // Group same tickers adjacent: spot before leveraged
   const tickerTotals = {};
@@ -7267,7 +7288,11 @@ function renderAssetDonut(data, cash, th) {
   const donutValues = [...sorted.map(p => Math.max(0, p.currentValue)), cash];
   const spotColorByTicker = {};
   sorted.forEach(p => { if (!p.leveraged) spotColorByTicker[p.ticker] = p.color; });
-  const donutColors = [...sorted.map(p => (p.leveraged && spotColorByTicker[p.ticker]) ? spotColorByTicker[p.ticker] : p.color), CASH_COLOR];
+  // Options get diagonal stripes in their own colour, so they stand out from spot at a glance.
+  const donutColors = [...sorted.map(p => {
+    const c = (p.leveraged && spotColorByTicker[p.ticker]) ? spotColorByTicker[p.ticker] : p.color;
+    return p.option ? optionStripe(c, th.pageBg) : c;
+  }), CASH_COLOR];
   const totalValue  = donutValues.reduce((a, b) => a + b, 0);
 
   // Plugin: white divider line + leverage label between same-ticker slices
@@ -7506,17 +7531,9 @@ function renderSectorDonut(data, cash, th) {
   renderGroupedDonut(data, cash, th, displaySector, sectorColor, null);
 }
 
-function renderThemeDonut(data, cash, th) {
-  if (!sectorLookupTried) {
-    sectorLookupTried = true;
-    fetchCryptoSectors(false);
-  }
-  renderGroupedDonut(data, cash, th, displayTheme, themeColor, THEME_ORDER);
-}
-
-// Cycle the donut: one slice per position -> per sector -> per theme -> back.
-// Persisted, so it survives a reload.
-const DONUT_MODES = ['asset', 'sector', 'theme'];
+// Toggle the donut: one slice per position <-> per sector. Persisted, so it survives a
+// reload. (A by-theme view existed until 2026-10-05; a saved 'theme' falls back to asset.)
+const DONUT_MODES = ['asset', 'sector'];
 function toggleDonutGroup() {
   const i = DONUT_MODES.indexOf(donutGroupMode);
   donutGroupMode = DONUT_MODES[(i + 1) % DONUT_MODES.length];
@@ -7553,7 +7570,6 @@ function renderCharts(data) {
 
   updateDonutGroupBtn();
   if      (donutGroupMode === 'sector') renderSectorDonut(data, donutCash, th);
-  else if (donutGroupMode === 'theme')  renderThemeDonut(data, donutCash, th);
   else                                  renderAssetDonut(data, donutCash, th);
 
   // Bar
