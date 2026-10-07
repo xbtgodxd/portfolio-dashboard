@@ -5478,13 +5478,12 @@ function submitPastTradeEntry() {
 
 function buildClosedTradesCsv() {
   const cell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const header = ['Ticker','Name','Sector','Direction','Units','Entry Price','Close Price','Currency','P&L USD','P&L %','Opened','Closed','Held Days','Outcome','Thesis'];
+  const header = ['Ticker','Name','Sector','Direction','Units','Entry Price','Close Price','Currency','P&L USD','P&L %','Opened','Closed','Held Days'];
   const rows = closedTrades.map(t => [
     t.ticker, t.name, t.sector, t.direction || 'spot', t.units, t.entryPrice, t.closePrice, t.currency || 'USD',
     (typeof t.totalPnlUsd === 'number' ? t.totalPnlUsd.toFixed(2) : ''),
     (typeof t.pnlPct === 'number' && isFinite(t.pnlPct) ? t.pnlPct.toFixed(2) : ''),
-    t.openedDate || '', t.closedDate, holdDays(t) ?? '',
-    t.outcome || '', t.thesis || ''
+    t.openedDate || '', t.closedDate, holdDays(t) ?? ''
   ]);
   return [header, ...rows].map(r => r.map(cell).join(',')).join('\n');
 }
