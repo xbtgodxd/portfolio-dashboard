@@ -6425,14 +6425,14 @@ function submitSkinAsset() {
 // own instrument name, because Derive spells decimal strikes with an underscore
 // (XRP-20261225-0_9-C) and a name built here would miss those.
 //
-// Prices come over Derive's public WebSocket. Its REST API only answers pages on derive.xyz
-// (CORS); the socket answers any page, so no proxy sits between the dashboard and Derive.
+// Prices come over Derive's public WebSocket (v3 since 2026-10-06 - the old api.lyra.finance
+// socket is gone). The socket answers any page, so no proxy sits between the dashboard and Derive.
 // Security: only the read-only public methods in DERIVE_READ_METHODS can be sent - no login, no
 // keys, no signing - and everything that comes back is parsed as a number and range-checked,
 // or matched against a strict name pattern, before it is stored or shown.
-const DERIVE_WS_URL          = 'wss://api.lyra.finance/ws';
+const DERIVE_WS_URL          = 'wss://api.derive.xyz/v3/ws';
 const DERIVE_TIMEOUT_MS      = 12000;
-const DERIVE_READ_METHODS    = new Set(['public/get_instruments', 'public/get_tickers', 'public/get_option_settlement_prices']);
+const DERIVE_READ_METHODS    = new Set(['public/get_all_instruments', 'public/get_tickers', 'public/get_option_settlement_prices']);
 const DERIVE_EXPIRY_HOUR_UTC = 8; // Derive options expire at 08:00 UTC on the expiry date
 // All four are bought for a debit, so a position is never worth less than zero.
 const OPTION_STRATEGIES = {
@@ -6609,7 +6609,7 @@ async function optionPriceRound() {
     seen.add(key);
     calls.push(key.startsWith('s:')
       ? { key, method: 'public/get_option_settlement_prices', params: { currency: p.underlying } }
-      : { key, method: 'public/get_tickers', params: { instrument_type: 'option', currency: p.underlying, expiry_date: p.expiry } });
+      : { key, method: 'public/get_tickers', params: { instrument_type: 'option', currency: p.underlying, expiry_date: Number(p.expiry) } });
   });
   if (!calls.length) return;
   const res = await deriveRequest(calls);
@@ -6663,20 +6663,26 @@ const OPT_CHAIN_TTL_MS = 10 * 60000;
 async function loadOptionChain(u) {
   const c = _optChain[u];
   if (c && Date.now() - c.at < OPT_CHAIN_TTL_MS) return c;
-  const res  = await deriveRequest([{ key: 'i', method: 'public/get_instruments', params: { currency: u, instrument_type: 'option', expired: false } }]);
-  const list = Array.isArray(res.i) ? res.i : null;
-  if (!list) return null;
-  const expiries = {};
+  // v3 answers in pages; 1000 a page covers every coin today (ETH ~1000), the rest are fetched if not.
+  const page = n => ({ key: 'p' + n, method: 'public/get_all_instruments', params: { currency: u, instrument_type: 'option', expired: false, page_size: 1000, page: n } });
+  const res  = await deriveRequest([page(1)]);
+  const first = res.p1 && Array.isArray(res.p1.instruments) ? res.p1 : null;
+  if (!first) return null;
+  const pages = Math.min(10, (first.pagination && Number(first.pagination.num_pages)) || 1);
+  const more  = pages > 1 ? await deriveRequest(Array.from({ length: pages - 1 }, (_, k) => page(k + 2))) : {};
+  const list  = [first, ...Object.values(more)].flatMap(r => r && Array.isArray(r.instruments) ? r.instruments : []);
+  const expiries = {}, seen = new Set();
   list.forEach(i => {
     const o = parseOptInst(i && i.instrument_name);
-    if (!o || o.underlying !== u || !(o.strike > 0)) return;
+    if (!o || o.underlying !== u || !(o.strike > 0) || i.is_active === false || seen.has(o.inst)) return; // inactive = listed but not trading, no price
+    seen.add(o.inst);
     (expiries[o.expiry] = expiries[o.expiry] || []).push({ inst: o.inst, strike: o.strike, type: o.type });
   });
   Object.values(expiries).forEach(a => a.sort((x, y) => x.strike - y.strike));
   return (_optChain[u] = { at: Date.now(), expiries });
 }
 async function loadOptionTickers(u, expiry) {
-  const res = await deriveRequest([{ key: 't', method: 'public/get_tickers', params: { instrument_type: 'option', currency: u, expiry_date: expiry } }]);
+  const res = await deriveRequest([{ key: 't', method: 'public/get_tickers', params: { instrument_type: 'option', currency: u, expiry_date: Number(expiry) } }]);
   const tk  = res.t && res.t.tickers && typeof res.t.tickers === 'object' ? res.t.tickers : null;
   if (tk) _optTickers[u + ':' + expiry] = tk;
   return tk;
