@@ -5031,7 +5031,7 @@ function submitClosePosition() {
   // % is return-on-cost across the whole position (avg exit vs entry), not just the units
   // left at close — otherwise realized P&L from earlier TPs inflates it. Fallback for the
   // no-log edge case keeps the old single-close behaviour.
-  const pctFromLog     = closedPnlPct(p.entryPrice, p.leveraged ? (p.direction || 'long') : null, closedLog);
+  const pctFromLog     = closedPnlPct(p.entryPrice, p.leveraged ? (p.direction || 'long') : null, closedLog, rate);
   const pnlPct         = pctFromLog != null ? pctFromLog : (entryNotional > 0 ? (totalPnl / entryNotional * 100) : 0);
 
   closedTradesPage = 1;  // the new trade goes to the top of the list — show it
@@ -5826,22 +5826,36 @@ function tradeLogAverages(log) {
            avgBuy: avg(buys),  boughtUnits: buys.reduce((s, e) => s + e.units, 0) };
 }
 
-// Return-on-cost % for a closed trade = weighted avg exit vs avg entry, direction-aware.
-// Blends partial TPs (a single close is just that one price). This is why it can't be
-// (totalPnl / remaining-units cost): realized P&L came from the whole position, so dividing
-// it by only the units left at close over-states the % (the old 240%-on-a-2x bug).
-function closedPnlPct(entryPrice, direction, tradeLog) {
-  const avgExit = tradeLogAverages(tradeLog || []).avgExit;
-  if (avgExit == null || !(entryPrice > 0)) return null;
+// Return-on-cost % for a closed trade = P&L booked on every sell ÷ the cost of the units sold.
+// Each sell's cost comes from its own price and booked P&L (what the entry was at that moment),
+// not from the entry at close: buys after a TP re-average the entry up, and avg exit vs that
+// entry showed a +$24,576 DRV trade as -3.1% (2026-10-14). It also can't be (totalPnl /
+// remaining-units cost) - that over-states it (the old 240%-on-a-2x bug). A sell without a
+// booked P&L, or one whose P&L implies a cost of zero or less, falls back to entryPrice.
+// rate = USD per unit of the trade's currency.
+function closedPnlPct(entryPrice, direction, tradeLog, rate = 1) {
+  const sells = (tradeLog || []).filter(e => e && e.side === 'sell' && e.units > 0 && e.price >= 0);
+  if (!sells.length || !(rate > 0)) return null;
   const dir = direction === 'short' ? -1 : 1;
-  return dir * (avgExit - entryPrice) / entryPrice * 100;
+  let pnl = 0, cost = 0;
+  for (const e of sells) {
+    let p = typeof e.pnlUSD === 'number' && isFinite(e.pnlUSD) ? e.pnlUSD : NaN;
+    let c = e.units * e.price * rate - dir * p; // units x entry at the time, in USD
+    if (!(c > 0)) {
+      if (!(entryPrice > 0)) return null;
+      p = dir * e.units * (e.price - entryPrice) * rate;
+      c = e.units * entryPrice * rate;
+    }
+    pnl += p; cost += c;
+  }
+  return cost > 0 ? pnl / cost * 100 : null;
 }
 
 // Fix pnlPct on any already-stored closed trade that has a trade log (idempotent).
 function recomputeClosedPnlPct() {
   closedTrades.forEach(t => {
     if (!Array.isArray(t.tradeLog) || !t.tradeLog.length) return;
-    const pct = closedPnlPct(t.entryPrice, t.direction, t.tradeLog);
+    const pct = closedPnlPct(t.entryPrice, t.direction, t.tradeLog, fxRates[(t.currency || 'USD').toUpperCase()] ?? 1);
     if (pct != null) t.pnlPct = pct;
   });
 }
