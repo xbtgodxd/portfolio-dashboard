@@ -3683,7 +3683,9 @@ function sanitizeSavedState(saved) {
 
 function loadState() {
   const saved = sanitizeSavedState(JSON.parse(localStorage.getItem('portfolio-dashboard-template') || '{}'));
-  if (saved.portfolio && Array.isArray(saved.portfolio) && saved.portfolio.length > 0) {
+  // Starter BTC/ETH rows only on a true first run (nothing saved yet). An empty saved list is
+  // real: closing the last open position used to bring the starter rows back (2026-10-14).
+  if (Array.isArray(saved.portfolio)) {
     portfolio = saved.portfolio.map((p, i) => {
       const known = KNOWN_PRICE_SOURCES[p.ticker] || {};
       return { currency: 'USD', ...known, ...p, posId: p.posId || (i + 1) };
@@ -5591,7 +5593,12 @@ function renderClosedTrades() {
             </div>
           </td>
           <td class="closed-outcome" style="text-align:left" onclick="this.classList.toggle('expanded')" title="Click to expand">${escHtml(t.outcome || '—')}${t.thesis ? `<div class="closed-thesis">Thesis at close: “${escHtml(t.thesis)}”</div>` : ''}</td>
-          <td>${fmtNativeOrDash(t.entryPrice, t.currency)}</td>
+          <td>${(() => {
+            const st  = closedTradeStats(t.entryPrice, t.direction, t.tradeLog, fxRates[(t.currency || 'USD').toUpperCase()] ?? 1);
+            const avg = st && st.avgEntry > 0 && Math.abs(st.avgEntry - t.entryPrice) > 1e-9 * Math.max(1, t.entryPrice) ? st.avgEntry : null;
+            return avg != null ? `${fmtNativeOrDash(avg, t.currency)} <span style="font-size:9px;color:var(--text3)" title="Average price of every buy, the first one included. Entry at close was ${fmtNativeOrDash(t.entryPrice, t.currency)}.">avg</span>`
+                               : fmtNativeOrDash(t.entryPrice, t.currency);
+          })()}</td>
           <td>${(() => {
             const sells = (t.tradeLog || []).filter(e => e.side === 'sell');
             const { avgExit } = tradeLogAverages(t.tradeLog || []);
@@ -5826,19 +5833,25 @@ function tradeLogAverages(log) {
            avgBuy: avg(buys),  boughtUnits: buys.reduce((s, e) => s + e.units, 0) };
 }
 
-// Return-on-cost % for a closed trade = P&L booked on every sell ÷ the cost of the units sold.
-// Each sell's cost comes from its own price and booked P&L (what the entry was at that moment),
-// not from the entry at close: buys after a TP re-average the entry up, and avg exit vs that
-// entry showed a +$24,576 DRV trade as -3.1% (2026-10-14). It also can't be (totalPnl /
-// remaining-units cost) - that over-states it (the old 240%-on-a-2x bug). A sell without a
-// booked P&L, or one whose P&L implies a cost of zero or less, falls back to entryPrice.
-// rate = USD per unit of the trade's currency.
-function closedPnlPct(entryPrice, direction, tradeLog, rate = 1) {
-  const sells = (tradeLog || []).filter(e => e && e.side === 'sell' && e.units > 0 && e.price >= 0);
-  if (!sells.length || !(rate > 0)) return null;
+// A closed trade's numbers, read off its trade log (2026-10-14, DRV: traded in and out many times).
+//   pct      = total P&L ÷ the most money that was in the position at once. Not ÷ the cost of
+//              every coin sold - selling and buying back counts the same money again each round,
+//              which showed a ~100% DRV trade as 44%. Not avg exit vs the entry at close either -
+//              buy-backs re-average that entry up (+$24,576 showed as -3.1%). And not ÷ the units
+//              left at close (the old 240%-on-a-2x bug). Buy once, sell once: plain exit vs entry.
+//   avgEntry = average price of every buy, the opening one included.
+// Each sell's cost is units x the entry at that moment, rebuilt from its price and booked P&L.
+// A sell without a booked P&L, or one whose P&L implies a cost of zero or less, uses entryPrice.
+// The opening holding is often not in the log: it is what the logged buys and sells leave over,
+// since a closed trade ends at zero. rate = USD per unit of the trade's currency. null if no sells.
+function closedTradeStats(entryPrice, direction, tradeLog, rate = 1) {
+  const log = (tradeLog || []).filter(e => e && (e.side === 'sell' || e.side === 'buy') && e.units > 0 && e.price >= 0)
+    .map((e, i) => ({ e, i })).sort((a, b) => String(a.e.date || '').localeCompare(String(b.e.date || '')) || a.i - b.i).map(x => x.e);
+  if (!log.some(e => e.side === 'sell') || !(rate > 0)) return null;
   const dir = direction === 'short' ? -1 : 1;
-  let pnl = 0, cost = 0;
-  for (const e of sells) {
+  const steps = [];
+  for (const e of log) {
+    if (e.side === 'buy') { steps.push({ buy: true, units: e.units, cost: e.units * e.price * rate, pnl: 0 }); continue; }
     let p = typeof e.pnlUSD === 'number' && isFinite(e.pnlUSD) ? e.pnlUSD : NaN;
     let c = e.units * e.price * rate - dir * p; // units x entry at the time, in USD
     if (!(c > 0)) {
@@ -5846,9 +5859,24 @@ function closedPnlPct(entryPrice, direction, tradeLog, rate = 1) {
       p = dir * e.units * (e.price - entryPrice) * rate;
       c = e.units * entryPrice * rate;
     }
-    pnl += p; cost += c;
+    steps.push({ buy: false, units: e.units, cost: c, pnl: p });
   }
-  return cost > 0 ? pnl / cost * 100 : null;
+  const sum = (buy, k) => steps.filter(x => x.buy === buy).reduce((a, x) => a + x[k], 0);
+  const openCost  = Math.max(0, sum(false, 'cost') - sum(true, 'cost'));
+  const openUnits = Math.max(0, sum(false, 'units') - sum(true, 'units'));
+  let held = openCost, peak = openCost;
+  steps.forEach(x => { held += x.buy ? x.cost : -x.cost; peak = Math.max(peak, held); });
+  const pnl = sum(false, 'pnl');
+  const buyUnits = openUnits + sum(true, 'units');
+  return {
+    pct:      peak > 0 ? pnl / peak * 100 : null,
+    avgEntry: buyUnits > 0 ? (openCost + sum(true, 'cost')) / buyUnits / rate : null,
+    peakUsd:  peak,
+  };
+}
+function closedPnlPct(entryPrice, direction, tradeLog, rate = 1) {
+  const st = closedTradeStats(entryPrice, direction, tradeLog, rate);
+  return st ? st.pct : null;
 }
 
 // Fix pnlPct on any already-stored closed trade that has a trade log (idempotent).
