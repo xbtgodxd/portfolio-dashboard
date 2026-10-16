@@ -7637,7 +7637,9 @@ function renderCharts(data) {
         borderColor: barData.map(g => g.pct >= 0 ? '#4fd08a' : '#f2645e'),
         borderWidth: 1,
         borderRadius: 4,
-        maxBarThickness: 32,   // one position should not fill the whole card
+        // Fewer positions, thicker bars: 72px for one, 10px less per extra bar, 32px from five up
+        // (2026-10-16) - a flat 32px left one or two bars looking lost in the card.
+        maxBarThickness: Math.max(32, 72 - 10 * (barData.length - 1)),
       }]
     },
     options: {
