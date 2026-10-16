@@ -7637,6 +7637,7 @@ function renderCharts(data) {
         borderColor: barData.map(g => g.pct >= 0 ? '#4fd08a' : '#f2645e'),
         borderWidth: 1,
         borderRadius: 4,
+        maxBarThickness: 32,   // one position should not fill the whole card
       }]
     },
     options: {
@@ -7666,8 +7667,12 @@ function renderCharts(data) {
           ticks: {
             color: th.muted,
             font: { family: 'IBM Plex Mono', size: 11 },
-            callback: v => v + '%'
+            // Round off float noise (-0.6000000000000001) before printing the tick
+            callback: v => +Number(v).toFixed(2) + '%'
           },
+          // At least -10%..+10% so a small move stays a small bar; grows with the data
+          suggestedMin: -10,
+          suggestedMax: 10,
           border: { color: th.grid }
         },
         y: {
