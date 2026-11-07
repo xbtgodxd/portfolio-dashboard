@@ -9742,9 +9742,9 @@ function isEditingField() {
 // ── VISION ──────────────────────────────────────────────────────────────────
 
 // "What does this portfolio look like at $1M?" The units never move — every price is
-// multiplied by the same factor, so the allocation at the target is identical to today's.
-// Cash rides that multiplier too. Cash does not appreciate, so that part is money paid in
-// or profit banked along the way; scaling it is what keeps the shape of the book intact.
+// multiplied by the same factor, so the positions keep their mix relative to each other.
+// Cash stays fixed at today's amount (his call, 2026-11-06) — only the positions grow, so
+// the multiplier is (target − cash) ÷ positions today, and cash's share shrinks at target.
 //
 // Everything is measured against true net worth — the number on the Total Net Worth card —
 // so the rows plus cash add up to the target exactly. A leveraged position therefore counts
@@ -9776,6 +9776,13 @@ function visionPriceable(p) { return !p.leveraged && !p.option; }
 
 function visionNetWorth(data) {
   return data.reduce((s, p) => s + visionBase(p), 0) + visionCash(data);
+}
+
+// Cash is fixed, so the positions alone have to cover target − cash. A target below today's
+// cash cannot be reached by price moves at all — the multiplier floors at 0 then.
+function visionMult(data) {
+  const pos = data.reduce((s, p) => s + visionBase(p), 0);
+  return pos > 0 ? Math.max(0, (visionTarget - visionCash(data)) / pos) : 0;
 }
 
 // "1m", "2,5m", "750k", "1.500.000" — the field takes whatever he types.
@@ -9829,7 +9836,7 @@ function renderVisionBar() {
         onkeydown="if(event.key==='Enter')this.blur()"
         title="Any amount — 1.000.000, 2.500.000, or short: 1m, 750k" />
       <div class="fx-divider"></div>
-      <span class="fx-status">units never change · only prices</span>
+      <span class="fx-status">units and cash never change · only prices</span>
     `;
   }
   const input = document.getElementById('visionTargetInput');
@@ -9840,10 +9847,10 @@ function renderVisionSummary(data) {
   const el = document.getElementById('visionSummary');
   if (!el) return;
   const now     = visionNetWorth(data);
-  const mult    = now > 0 ? visionTarget / now : 0;
+  const mult    = visionMult(data);
   const gap     = visionTarget - now;
   const cashNow = visionCash(data);
-  const cashPct = now > 0 ? (cashNow / now * 100) : 0;
+  const cashPct = visionTarget > 0 ? (cashNow / visionTarget * 100) : 0;
   const ranked  = data.map(p => ({ p, v: visionBase(p) * mult })).sort((a, b) => b.v - a.v);
   const top     = ranked.length ? ranked[0] : null;
   const homeSub = homeCurrency !== 'USD'
@@ -9876,8 +9883,8 @@ function renderVisionSummary(data) {
     </div>
     <div class="card accent-amber">
       <div class="card-label">Cash at Target</div>
-      <div class="card-value" style="font-size:20px">${fmtVisionUsd(cashNow * mult)}</div>
-      <div class="card-sub">${cashPct.toFixed(1)}% of portfolio — unchanged</div>
+      <div class="card-value" style="font-size:20px">${fmtVisionUsd(cashNow)}</div>
+      <div class="card-sub">fixed · ${cashPct.toFixed(1)}% of target</div>
     </div>
     <div class="card accent-green">
       <div class="card-label">Biggest Line</div>
@@ -9890,14 +9897,13 @@ function renderVisionSummary(data) {
 function renderVisionTable(data) {
   const tbody = document.getElementById('visionTableBody');
   if (!tbody) return;
-  const now  = visionNetWorth(data);
-  const mult = now > 0 ? visionTarget / now : 0;
+  const mult = visionMult(data);
   const sorted = [...data].sort((a, b) => visionBase(b) - visionBase(a));
   let needsNote = false;
 
   tbody.innerHTML = sorted.map((p, i) => {
     const base     = visionBase(p);
-    const allocPct = now > 0 ? (base / now) * 100 : 0;
+    const allocPct = visionTarget > 0 ? (base * mult / visionTarget) * 100 : 0; // share at target
     const sc       = SECTOR_COLORS[p.sector] || { color: '#8892a8', bg: 'rgba(136,146,168,0.1)' };
     const priceOk  = visionPriceable(p);
     if (!priceOk) needsNote = true;
@@ -9961,9 +9967,7 @@ function renderVisionTable(data) {
 function renderVisionCash(data) {
   const el = document.getElementById('visionCashSection');
   if (!el) return;
-  const now   = visionNetWorth(data);
-  const mult  = now > 0 ? visionTarget / now : 0;
-  const total = visionCash(data) * mult;
+  const total = visionCash(data);
 
   el.innerHTML = `
     <div class="cash-section">
@@ -9989,7 +9993,7 @@ function renderVisionCash(data) {
           return `
           <div class="cash-chip">
             <span class="cash-chip-label">${escHtml(c.label)}</span>
-            <span class="cash-chip-amount">${fmtVisionUsd(usd * mult)}</span>
+            <span class="cash-chip-amount">${fmtVisionUsd(usd)}</span>
           </div>`;
         }).join('')}
       </div>
@@ -10001,9 +10005,8 @@ function renderVisionDonut(data) {
   const canvas = document.getElementById('visionDonutChart');
   if (!canvas) return;
   const th   = chartTheme();
-  const now  = visionNetWorth(data);
-  const mult = now > 0 ? visionTarget / now : 0;
-  const cash = visionCash(data) * mult;
+  const mult = visionMult(data);
+  const cash = visionCash(data);
 
   const lbl = document.getElementById('visionDonutTotal');
   if (lbl) lbl.textContent = fmtVisionTarget(visionTarget);
