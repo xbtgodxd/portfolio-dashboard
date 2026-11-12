@@ -4656,8 +4656,17 @@ function compute(p) {
     return { ...p, invested: 0, currentValue, equityValue, pnlUsd, totalPnlUsd, realizedPnl, pnlPct, pnlPctOnMargin, leverage, hasLinkedCash };
   }
 
+  // Spot with realized P&L: the row runs on the real entry (break-even). Invested = units × real
+  // entry (profit taken out comes off), P&L % = whole trade (realized incl.) ÷ that. Cost covered
+  // → invested 0 and % falls back to the plain cost of the units held.
+  const be = realEntryInfo(p);
+  if (be) {
+    const invested = be.covered ? 0 : p.units * be.price * rate;
+    const pnlPct   = (totalPnlUsd / (invested > 0 ? invested : entryNotional)) * 100;
+    return { ...p, invested, currentValue, equityValue: currentValue, pnlUsd, totalPnlUsd, realizedPnl, pnlPct, pnlPctOnMargin: null, leverage: null, realEntry: be };
+  }
   const pnlPct = (pnlUsd / entryNotional) * 100;
-  return { ...p, invested: entryNotional, currentValue, equityValue: currentValue, pnlUsd, totalPnlUsd, realizedPnl, pnlPct, pnlPctOnMargin: null, leverage: null };
+  return { ...p, invested: entryNotional, currentValue, equityValue: currentValue, pnlUsd, totalPnlUsd, realizedPnl, pnlPct, pnlPctOnMargin: null, leverage: null, realEntry: null };
 }
 
 function computeAll() {
@@ -4686,6 +4695,12 @@ function breakEvenInfo(p) {
   }
   if (price <= 0) return null; // a short so far underwater no price gets it back to even
   return { price, covered: false, lockedUsd: null };
+}
+
+// Spot positions show the break-even as their Entry (the "real entry"); perps keep the avg entry
+// with a break-even line under P&L $.
+function realEntryInfo(p) {
+  return p.leveraged ? null : breakEvenInfo(p);
 }
 
 function breakEvenSub(p) {
@@ -4739,11 +4754,12 @@ function renderSummary(data) {
   const cash          = cashTotalUSD(data);
   const totalValue    = investedValue + cash;
   const totalInvested = data.reduce((s,p) => s + p.invested, 0);
-  // linked perps have equityValue=0; add their P&L explicitly so it's not lost
-  const linkedPerpPnl = data.filter(p => p.hasLinkedCash).reduce((s,p) => s + p.totalPnlUsd, 0);
-  // realized P&L on open positions (partial TPs) — linked perps excluded: theirs is already in totalPnlUsd above
+  // realized P&L on open positions (partial TPs) — only drives the "incl. realized" label now
   const realizedOpen  = data.filter(p => !p.hasLinkedCash).reduce((s,p) => s + p.realizedPnl, 0);
-  const totalPnlUsd   = investedValue - totalInvested + linkedPerpPnl + realizedOpen;
+  // Sum of each row's whole-trade P&L (unrealized + realized; linked perps included). Spot rows
+  // with a real entry already have realized taken off `invested`, so value − invested + realized
+  // would count it twice.
+  const totalPnlUsd   = data.reduce((s,p) => s + p.totalPnlUsd, 0);
   const totalPnlPct   = totalInvested > 0 ? (totalPnlUsd / totalInvested) * 100 : 0;
   const best  = data.length ? data.reduce((a,b) => b.pnlPct > a.pnlPct ? b : a) : null;
   const worst = data.length ? data.reduce((a,b) => b.pnlPct < a.pnlPct ? b : a) : null;
@@ -4820,9 +4836,12 @@ function sortBy(key) {
 
 function renderTable(data) {
   const totalValue = data.reduce((s,p) => s + p.currentValue, 0) + cashTotalUSD(data);
-  data = data.map(p => ({ ...p, allocPct: totalValue > 0 ? (p.currentValue / totalValue) * 100 : 0, displayPnlPct: p.pnlPctOnMargin != null ? p.pnlPctOnMargin : p.pnlPct }));
+  data = data.map(p => ({ ...p, allocPct: totalValue > 0 ? (p.currentValue / totalValue) * 100 : 0, displayPnlPct: p.pnlPctOnMargin != null ? p.pnlPctOnMargin : p.pnlPct,
+                          displayEntry: p.realEntry ? p.realEntry.price : p.entryPrice }));
+  // The Entry column shows the real entry, so sort on that too
+  const key = sortKey === 'entryPrice' ? 'displayEntry' : sortKey;
   const sorted = [...data].sort((a,b) => {
-    let av = a[sortKey], bv = b[sortKey];
+    let av = a[key], bv = b[key];
     if (typeof av === 'string') return sortDir * av.localeCompare(bv);
     return sortDir * (av - bv);
   });
@@ -4855,12 +4874,19 @@ function renderTable(data) {
       <td class="right">
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
           <input class="price-editable" type="text"
-            value="${editMode ? p.entryPrice : fmtPriceNum(p.entryPrice)}"
+            value="${editMode ? (p.realEntry ? Number(p.displayEntry.toFixed(6)) : p.entryPrice) : fmtPriceNum(p.displayEntry)}"
+            ${p.realEntry ? `title="Real entry: avg buy price ${escHtml(fmtPriceSmall(p.entryPrice, p.currency))} minus the ${escHtml(fmtUsd(p.realizedPnl))} realized on this position${editMode ? '. Type the real entry you want; the avg buy price adjusts to match.' : ''}"` : ''}
             ${editMode ? '' : 'readonly tabindex="-1"'}
-            onblur="updateEntryPrice(${p.posId}, this.value)"
+            onblur="updateEntryPrice(${p.posId}, this.value, this.defaultValue)"
             onkeydown="if(event.key==='Enter')this.blur()"
           />${p.currency && p.currency !== 'USD' ? `<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${escHtml(p.currency)}</span>` : ''}
         </div>
+        ${p.realEntry && p.realEntry.covered
+          ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;margin-top:2px">
+               <span class="lev-sub" style="color:var(--green)" title="Realized profit exceeds what the units you hold cost">Cost covered</span>
+               <span class="lev-sub" style="color:var(--green)" title="Profit kept even if the price goes to zero">+${fmtUsd(p.realEntry.lockedUsd)} locked</span>
+             </div>`
+          : ''}
       </td>
       <td class="right">
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
@@ -4908,7 +4934,7 @@ function renderTable(data) {
         <div class="pnl-cell">
           <span class="pnl-usd ${p.totalPnlUsd >= 0 ? 'pos' : 'neg'}">${fmtUsd(p.totalPnlUsd)}</span>
           ${(!p.physical || p.realizedPnl) ? `<span class="realized-sub" onclick="editRealized(${p.posId})" title="Click for trade log & realized P&L">${p.realizedPnl ? `incl. ${fmtUsd(p.realizedPnl)} realized` : 'trade log'}</span>` : ''}
-          ${breakEvenSub(p)}
+          ${p.leveraged ? breakEvenSub(p) : ''}
           ${optionSub(p)}
         </div>
       </td>
@@ -5682,13 +5708,20 @@ function promptTarget(posId) {
   renderAll();
 }
 
-function updateEntryPrice(posId, rawVal) {
+function updateEntryPrice(posId, rawVal, shownVal) {
+  // Leaving the box untouched must not write back the rounded real entry
+  if (shownVal != null && String(rawVal).trim() === String(shownVal).trim()) return;
   const val = parseUserNumber(rawVal);
   if (isNaN(val) || val <= 0) return;
   const p = portfolio.find(p => p.posId === posId);
-  if (!p || p.entryPrice === val) return;
-  pushUndo(`entry price ${p.ticker} → ${fmtPrice(val)}`);
-  p.entryPrice = val;
+  if (!p) return;
+  // Spot with realized P&L: the box is the real entry, so turn it back into the avg buy price
+  const real  = realEntryInfo(p);
+  const rate  = fxRates[(p.currency || 'USD').toUpperCase()] ?? 1;
+  const entry = real ? val + p.realizedPnl / (p.units * rate) : val;
+  if (!(entry > 0) || Math.abs(entry - p.entryPrice) <= 1e-12 * Math.max(1, p.entryPrice)) return;
+  pushUndo(`${real ? 'real entry' : 'entry price'} ${p.ticker} → ${fmtPrice(val)}`);
+  p.entryPrice = entry;
   // Editing a physical asset's purchase price declares a cost basis → start tracking gain/loss.
   if (p.physical) p.hasCostBasis = true;
   saveState();
@@ -7630,7 +7663,8 @@ function renderCharts(data) {
       ? `${p.ticker} ${p.leverage.toFixed(1)}x${p.direction === 'short' ? ' S' : ''}`
       : chartLabel(p);
     return { label, ticker: p.ticker, pnlUsd: p.totalPnlUsd, realizedPnl: p.realizedPnl, deployed,
-             pct: deployed > 0 ? (p.totalPnlUsd / deployed) * 100 : 0 };
+             // real-entry rows use the table's P&L % (whole trade ÷ real-entry cost, sane when cost is covered)
+             pct: p.realEntry ? p.pnlPct : deployed > 0 ? (p.totalPnlUsd / deployed) * 100 : 0 };
   }).sort((a, b) => b.pct - a.pct);
 
   if (barChart) barChart.destroy();
