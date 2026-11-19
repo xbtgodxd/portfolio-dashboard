@@ -2659,6 +2659,8 @@ const DEFAULT_CASH = [
 ];
 
 const CASH_COLOR = '#8fb0d8'; // reserved for Cash slice — never assigned to positions
+// Donut slice gap: drop the border when only one slice is visible, or a lone 100% slice shows a seam line at the top
+const donutGap = w => ctx => (ctx.dataset.data.filter(v => v > 0).length > 1 ? w : 0);
 // Slice/dot colours, in assignment order. Chosen by farthest-point search in OKLab rather
 // than by eye: the previous list varied hue but not lightness, so violet/purple (#8b5cf6 vs
 // #9945ff) sat 0.046 apart perceptually and neighbouring pie slices blurred together. These
@@ -7433,8 +7435,8 @@ function renderAssetDonut(data, cash, th) {
         data: donutValues,
         backgroundColor: donutColors,
         borderColor: th.pageBg,
-        borderWidth: 3,
-        hoverBorderWidth: 4,
+        borderWidth: donutGap(3),
+        hoverBorderWidth: donutGap(4),
       }]
     },
     options: {
@@ -7562,8 +7564,8 @@ function renderGroupedDonut(data, cash, th, keyOf, colorOf, order) {
         data: values,
         backgroundColor: colors,
         borderColor: th.pageBg,
-        borderWidth: 3,
-        hoverBorderWidth: 4,
+        borderWidth: donutGap(3),
+        hoverBorderWidth: donutGap(4),
       }]
     },
     options: {
@@ -8750,7 +8752,7 @@ function renderPrivateSplitChart() {
       datasets: [{ data: [companyTotal, privateTotal],
         backgroundColor: ['rgba(232,176,74,0.85)', 'rgba(167,151,217,0.85)'],
         borderColor:     [th.pageBg, th.pageBg],
-        borderWidth: 2, hoverOffset: 4 }]
+        borderWidth: donutGap(2), hoverOffset: 4 }]
     },
     options: {
       cutout: '70%', responsive: true, maintainAspectRatio: false,
@@ -10055,7 +10057,7 @@ function renderVisionDonut(data) {
   if (visionDonutChart) visionDonutChart.destroy();
   visionDonutChart = new Chart(canvas, {
     type: 'doughnut',
-    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: th.pageBg, borderWidth: 3, hoverBorderWidth: 4 }] },
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: th.pageBg, borderWidth: donutGap(3), hoverBorderWidth: donutGap(4) }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
