@@ -877,6 +877,7 @@ textarea.form-input { min-height: 80px; resize: vertical; }
 .cash-chip:hover { border-color: var(--border2); }
 .cash-chip-linked { border-color: var(--cyand); background: var(--bg3); }
 .cash-chip-label { font-size: 12px; font-weight: 600; color: var(--text2); }
+.cash-offramp-tag { margin-left: 6px; padding: 1px 5px; border: 1px dashed var(--text3); border-radius: 4px; font-family: var(--mono); font-size: 9px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; }
 .cash-chip-amount { font-family: var(--mono); font-size: 12px; color: var(--text); }
 .cash-chip-usd { font-family: var(--mono); font-size: 11px; color: var(--text3); }
 .cash-chip-remove {
@@ -909,6 +910,7 @@ textarea.form-input { min-height: 80px; resize: vertical; }
 .calc-inline input:focus { border-color: var(--cyan); }
 .calc-amt { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--cyan); }
 .calc-note { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+.calc-inline input.calc-wide { width: 78px; }
 
 /* ── HISTORY ── */
 .history-chart-card {
@@ -1941,8 +1943,13 @@ details:not([open]) .wallet-chevron { transform: rotate(-90deg); }
     </div>
     <div class="form-group">
       <label class="form-label">Label</label>
-      <input class="form-input" id="fc-label" placeholder="e.g. Bank Account, COLD, Savings" />
+      <input class="form-input" id="fc-label" placeholder="e.g. Bank Account, COLD, Savings"
+        oninput="if(!this.dataset.touched)document.getElementById('fc-offramp').checked=looksOfframped(this.value)" />
     </div>
+    <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px;text-transform:none">
+      <input type="checkbox" id="fc-offramp" onchange="document.getElementById('fc-label').dataset.touched='1'" />
+      Off-ramped (in the bank, needs on-ramping to use)
+    </label>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Amount</label>
@@ -2659,6 +2666,16 @@ const DEFAULT_CASH = [
 ];
 
 const CASH_COLOR = '#8fb0d8'; // reserved for Cash slice — never assigned to positions
+// Off-ramped cash (bank): same blue family, darker, drawn hatched - money that has to be
+// on-ramped again before it can be used, so it should not read as dry powder.
+const OFFRAMP_COLOR = '#5d7896';
+const OFFRAMP_LABEL = 'Bank (off-ramped)';
+// Does a cash label sound like a bank account? Used to pre-tick "off-ramped" when adding
+// cash and to default old entries. Word parts (bank, savings...) match anywhere, so
+// "Bank acc" or "Chase Bank" hit; short bank names need whole words so "Ledger" or
+// "Otherwise" do not. Only a default - the user can always flip it.
+const OFFRAMP_WORDS = /bank|savings|checking|chequing|current account|money market|building society|credit union|iban|fiat|\b(wise|revolut|n26|monzo|bunq|chase|hsbc|barclays|santander|lloyds|natwest)\b/i;
+function looksOfframped(label) { return OFFRAMP_WORDS.test(String(label || '')); }
 // Donut slice gap: drop the border when only one slice is visible, or a lone 100% slice shows a seam line at the top
 const donutGap = w => ctx => (ctx.dataset.data.filter(v => v > 0).length > 1 ? w : 0);
 // Slice/dot colours, in assignment order. Chosen by farthest-point search in OKLab rather
@@ -3347,6 +3364,7 @@ let donutGroupMode = 'asset';
 // Position size calculator: the last % typed in. A preference - persisted, never
 // snapshotted for undo, never touches net worth.
 let sizeCalcPct = 15;
+let priceCalcAmt = '', priceCalcPrice = ''; // units calculator scratch, not saved
 // The sector lookup is lazy: nothing hits CoinGecko until the sector donut is actually
 // drawn, and then only once a session. Someone who never opens the view never pays for it.
 let sectorLookupTried = false;
@@ -3713,6 +3731,8 @@ function loadState() {
   if (saved.cashPositions && Array.isArray(saved.cashPositions)) {
     cashPositions = saved.cashPositions;
     nextCashId = Math.max(nextCashId, ...cashPositions.map(c => c.id + 1));
+    // Off-ramped flag (2026-11-19): entries saved before it existed default by label.
+    cashPositions.forEach(c => { if (typeof c.offramped !== 'boolean') c.offramped = looksOfframped(c.label); });
   } else {
     cashPositions = [...DEFAULT_CASH];
   }
@@ -4411,6 +4431,23 @@ function cashTotalUSD(data) {
   }, 0);
 }
 
+// The part of cash sitting in the bank: real money, but not instantly usable on-chain.
+// A perp-linked entry is margin on an exchange, so it never counts here.
+function offrampedCashUSD() {
+  return cashPositions.reduce((s, c) =>
+    c.offramped && c.linkedPerpId == null
+      ? s + c.amount * (fxRates[(c.currency || 'USD').toUpperCase()] ?? 1) : s, 0);
+}
+
+function toggleCashOfframp(id) {
+  const c = cashPositions.find(c => c.id === id);
+  if (!c) return;
+  pushUndo(`edit cash ${c.label}`);
+  c.offramped = !c.offramped;
+  saveState();
+  renderAll();
+}
+
 function renderCashSection(data) {
   data = data || computeAll();
   const el = document.getElementById('cashSection');
@@ -4463,6 +4500,8 @@ function renderCashSection(data) {
                   onchange="linkCashToPerp(${c.id}, this.value)" title="Link to perp position">
                   ${perpOptions}
                 </select>` : ''}
+              ${linkedPerp ? '' : `<button class="edit-btn${c.offramped ? ' active' : ''}" style="padding:2px 8px;font-size:10px"
+                onclick="toggleCashOfframp(${c.id})" title="Off-ramped = sitting in the bank, needs on-ramping before it can be used">${c.offramped ? 'off-ramped' : 'on-chain'}</button>`}
               <button class="cash-chip-remove" style="opacity:1" onclick="removeCash(${c.id})" title="Remove">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
@@ -4476,7 +4515,7 @@ function renderCashSection(data) {
             const pnlColor = linkedPerp && linkedPerp.pnlUsd >= 0 ? 'var(--green)' : 'var(--red)';
             return `
             <div class="cash-chip${linkedPerp ? ' cash-chip-linked' : ''}">
-              <span class="cash-chip-label">${escHtml(c.label)}${linkedPerp ? `<span style="color:var(--cyan);font-size:9px;margin-left:4px">⬡ ${escHtml(linkedPerp.ticker)}</span>` : ''}</span>
+              <span class="cash-chip-label">${escHtml(c.label)}${linkedPerp ? `<span style="color:var(--cyan);font-size:9px;margin-left:4px">⬡ ${escHtml(linkedPerp.ticker)}</span>` : ''}${!linkedPerp && c.offramped ? `<span class="cash-offramp-tag" title="Sitting in the bank - needs on-ramping before it can be used">off-ramped</span>` : ''}</span>
               <span class="cash-chip-amount" style="${linkedPerp ? 'color:var(--text)' : ''}">${native}</span>
               ${linkedPerp ? `<span style="font-family:var(--mono);font-size:10px;color:${pnlColor}">${linkedPerp.pnlUsd >= 0 ? '+' : ''}${fmtUsd(linkedPerp.pnlUsd)}</span>` : ''}
               ${!linkedPerp && c.currency.toUpperCase() !== 'USD' ? `<span class="cash-chip-usd">≈ ${fmtUsd(usd)}</span>` : ''}
@@ -4546,7 +4585,33 @@ function renderSizeCalc(data) {
       oninput="setSizeCalcPct(this.value)" onchange="saveState()"
       onkeydown="if(event.key==='Enter')this.blur()" />
     <span class="calc-note">% =</span>
-    <span class="calc-amt" id="calcAmt">${r.usd}</span>`;
+    <span class="calc-amt" id="calcAmt">${r.usd}</span>
+    <div class="fx-divider"></div>
+    <span class="fx-label">Units</span>
+    <span class="calc-note">$</span>
+    <input type="text" inputmode="decimal" class="calc-wide" value="${escHtml(priceCalcAmt)}" title="Dollar amount" placeholder="25000"
+      oninput="setPriceCalc('amt', this.value)" onkeydown="if(event.key==='Enter')this.blur()" />
+    <span class="calc-note">÷</span>
+    <input type="text" inputmode="decimal" class="calc-wide" value="${escHtml(priceCalcPrice)}" title="Price per unit" placeholder="price"
+      oninput="setPriceCalc('price', this.value)" onkeydown="if(event.key==='Enter')this.blur()" />
+    <span class="calc-note">=</span>
+    <span class="calc-amt" id="priceCalcOut">${priceCalcResult(priceCalcAmt, priceCalcPrice)}</span>`;
+}
+
+// ── UNITS CALCULATOR ── "$25,000 at $0.39 = how many coins?"
+
+function priceCalcResult(amt, price) {
+  const a = String(amt).trim() === '' ? NaN : parseUserNumber(amt);
+  const p = String(price).trim() === '' ? NaN : parseUserNumber(price);
+  if (!isFinite(a) || !isFinite(p) || a < 0 || p <= 0) return '—';
+  const u = a / p;
+  const d = u >= 100 ? 0 : u >= 1 ? 2 : 6; // round down: never more units than the money buys
+  return (Math.floor(u * 10 ** d) / 10 ** d).toLocaleString('en-US', { maximumFractionDigits: d });
+}
+
+function setPriceCalc(which, value) {
+  if (which === 'amt') priceCalcAmt = String(value); else priceCalcPrice = String(value);
+  document.getElementById('priceCalcOut').textContent = priceCalcResult(priceCalcAmt, priceCalcPrice);
 }
 
 // Typing only updates the result in place - a full re-render would steal focus.
@@ -6138,6 +6203,8 @@ function showCashModal() {
 function hideCashModal() {
   document.getElementById('cashModal').classList.remove('open');
   document.getElementById('fc-label').value = '';
+  delete document.getElementById('fc-label').dataset.touched;
+  document.getElementById('fc-offramp').checked = false;
   document.getElementById('fc-amount').value = '';
   document.getElementById('fc-currency').value = 'USD';
   document.getElementById('fc-error').textContent = '';
@@ -6153,7 +6220,9 @@ function submitAddCash() {
   if (isNaN(amount) || amount < 0){ err.textContent = 'Enter a valid amount.'; return; }
 
   pushUndo(`add cash ${label}`);
-  cashPositions.push({ id: nextCashId++, label, amount, currency });
+  const offBox    = document.getElementById('fc-offramp');
+  const offramped = document.getElementById('fc-label').dataset.touched ? offBox.checked : looksOfframped(label);
+  cashPositions.push({ id: nextCashId++, label, amount, currency, offramped });
   saveState();
   hideCashModal();
   renderAll();
@@ -7351,7 +7420,7 @@ function optionStripe(color, gap) {
   } catch (e) { return color; }
 }
 
-function renderAssetDonut(data, cash, th) {
+function renderAssetDonut(data, cashParts, th) {
   // Group same tickers adjacent: spot before leveraged
   const tickerTotals = {};
   data.forEach(p => { tickerTotals[p.ticker] = (tickerTotals[p.ticker] || 0) + p.equityValue; });
@@ -7360,22 +7429,24 @@ function renderAssetDonut(data, cash, th) {
     return (a.leveraged ? 1 : 0) - (b.leveraged ? 1 : 0);
   });
 
+  const hasOff = cashParts.offramped > 0;
   const donutLabels = [...sorted.map(p =>
     p.leveraged && p.leverage ? `${p.ticker} ${p.leverage.toFixed(1)}x` : p.ticker
-  ), 'Cash'];
+  ), 'Cash', ...(hasOff ? [OFFRAMP_LABEL] : [])];
   // What the legend and tooltip title show - names for rows that only have a made-up code
   const donutNames = [...sorted.map(p =>
     p.leveraged && p.leverage ? `${p.ticker} ${p.leverage.toFixed(1)}x` : chartLabel(p)
-  ), 'Cash'];
+  ), 'Cash', ...(hasOff ? [OFFRAMP_LABEL] : [])];
   // use notional (currentValue) for all positions so the pie shows true market exposure
-  const donutValues = [...sorted.map(p => Math.max(0, p.currentValue)), cash];
+  const donutValues = [...sorted.map(p => Math.max(0, p.currentValue)), cashParts.liquid,
+    ...(hasOff ? [cashParts.offramped] : [])];
   const spotColorByTicker = {};
   sorted.forEach(p => { if (!p.leveraged) spotColorByTicker[p.ticker] = p.color; });
   // Options get diagonal stripes in their own colour, so they stand out from spot at a glance.
   const donutColors = [...sorted.map(p => {
     const c = (p.leveraged && spotColorByTicker[p.ticker]) ? spotColorByTicker[p.ticker] : p.color;
     return p.option ? optionStripe(c, th.pageBg) : c;
-  }), CASH_COLOR];
+  }), CASH_COLOR, ...(hasOff ? [optionStripe(OFFRAMP_COLOR, th.pageBg)] : [])];
   const totalValue  = donutValues.reduce((a, b) => a + b, 0);
 
   // Plugin: white divider line + leverage label between same-ticker slices
@@ -7529,7 +7600,7 @@ function renderAssetDonut(data, cash, th) {
 // (currentValue), matching the asset donut, so a perp counts at full market exposure and a
 // hedge does not net out, and both views sum to the same number.
 // No leverage divider here: two legs of one ticker share a sector and belong in one arc.
-function renderGroupedDonut(data, cash, th, keyOf, colorOf, order) {
+function renderGroupedDonut(data, cashParts, th, keyOf, colorOf, order) {
   const totals = {}, counts = {};
   data.forEach(p => {
     const k = keyOf(p);
@@ -7548,11 +7619,13 @@ function renderGroupedDonut(data, cash, th, keyOf, colorOf, order) {
         })
       : keys.sort((a, b) => totals[b] - totals[a])
     ).map(k => [k, totals[k]]);
-  if (cash > 0) entries.push(['Cash', cash]);
+  if (cashParts.liquid > 0)    entries.push(['Cash', cashParts.liquid]);
+  if (cashParts.offramped > 0) entries.push([OFFRAMP_LABEL, cashParts.offramped]);
 
   const labels     = entries.map(e => e[0]);
   const values     = entries.map(e => e[1]);
-  const colors     = labels.map(l => l === 'Cash' ? CASH_COLOR : colorOf(l));
+  const colors     = labels.map(l => l === 'Cash' ? CASH_COLOR
+    : l === OFFRAMP_LABEL ? optionStripe(OFFRAMP_COLOR, th.pageBg) : colorOf(l));
   const totalValue = values.reduce((a, b) => a + b, 0);
 
   if (donutChart) donutChart.destroy();
@@ -7606,12 +7679,12 @@ function renderGroupedDonut(data, cash, th, keyOf, colorOf, order) {
   });
 }
 
-function renderSectorDonut(data, cash, th) {
+function renderSectorDonut(data, cashParts, th) {
   if (!sectorLookupTried) {
     sectorLookupTried = true;
     fetchCryptoSectors(false); // fire and forget; it re-renders itself if it finds anything
   }
-  renderGroupedDonut(data, cash, th, displaySector, sectorColor, null);
+  renderGroupedDonut(data, cashParts, th, displaySector, sectorColor, null);
 }
 
 // Toggle the donut: one slice per position <-> per sector. Persisted, so it survives a
@@ -7651,9 +7724,13 @@ function renderCharts(data) {
   const donutCash = Math.max(0, cash - data.reduce((s, p) =>
     p.leveraged && p.marginUSD > 0 ? s + p.marginUSD + (p.hasLinkedCash ? p.pnlUsd : 0) : s, 0));
 
+  // Bank money gets its own hatched slice. Perp margin comes out of on-chain cash, not the bank.
+  const offCash = Math.min(donutCash, offrampedCashUSD());
+  const cashParts = { liquid: donutCash - offCash, offramped: offCash };
+
   updateDonutGroupBtn();
-  if      (donutGroupMode === 'sector') renderSectorDonut(data, donutCash, th);
-  else                                  renderAssetDonut(data, donutCash, th);
+  if      (donutGroupMode === 'sector') renderSectorDonut(data, cashParts, th);
+  else                                  renderAssetDonut(data, cashParts, th);
 
   // Bar
   // One bar per position: spot measured on cost basis, perps on margin.
