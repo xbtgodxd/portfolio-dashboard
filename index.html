@@ -910,7 +910,6 @@ textarea.form-input { min-height: 80px; resize: vertical; }
 .calc-inline input:focus { border-color: var(--cyan); }
 .calc-amt { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--cyan); }
 .calc-note { font-family: var(--mono); font-size: 11px; color: var(--text3); }
-.calc-inline input.calc-wide { width: 78px; }
 
 /* ── HISTORY ── */
 .history-chart-card {
@@ -3364,7 +3363,6 @@ let donutGroupMode = 'asset';
 // Position size calculator: the last % typed in. A preference - persisted, never
 // snapshotted for undo, never touches net worth.
 let sizeCalcPct = 15;
-let priceCalcAmt = '', priceCalcPrice = ''; // units calculator scratch, not saved
 // The sector lookup is lazy: nothing hits CoinGecko until the sector donut is actually
 // drawn, and then only once a session. Someone who never opens the view never pays for it.
 let sectorLookupTried = false;
@@ -4585,33 +4583,7 @@ function renderSizeCalc(data) {
       oninput="setSizeCalcPct(this.value)" onchange="saveState()"
       onkeydown="if(event.key==='Enter')this.blur()" />
     <span class="calc-note">% =</span>
-    <span class="calc-amt" id="calcAmt">${r.usd}</span>
-    <div class="fx-divider"></div>
-    <span class="fx-label">Units</span>
-    <span class="calc-note">$</span>
-    <input type="text" inputmode="decimal" class="calc-wide" value="${escHtml(priceCalcAmt)}" title="Dollar amount" placeholder="25000"
-      oninput="setPriceCalc('amt', this.value)" onkeydown="if(event.key==='Enter')this.blur()" />
-    <span class="calc-note">÷</span>
-    <input type="text" inputmode="decimal" class="calc-wide" value="${escHtml(priceCalcPrice)}" title="Price per unit" placeholder="price"
-      oninput="setPriceCalc('price', this.value)" onkeydown="if(event.key==='Enter')this.blur()" />
-    <span class="calc-note">=</span>
-    <span class="calc-amt" id="priceCalcOut">${priceCalcResult(priceCalcAmt, priceCalcPrice)}</span>`;
-}
-
-// ── UNITS CALCULATOR ── "$25,000 at $0.39 = how many coins?"
-
-function priceCalcResult(amt, price) {
-  const a = String(amt).trim() === '' ? NaN : parseUserNumber(amt);
-  const p = String(price).trim() === '' ? NaN : parseUserNumber(price);
-  if (!isFinite(a) || !isFinite(p) || a < 0 || p <= 0) return '—';
-  const u = a / p;
-  const d = u >= 100 ? 0 : u >= 1 ? 2 : 6; // round down: never more units than the money buys
-  return (Math.floor(u * 10 ** d) / 10 ** d).toLocaleString('en-US', { maximumFractionDigits: d });
-}
-
-function setPriceCalc(which, value) {
-  if (which === 'amt') priceCalcAmt = String(value); else priceCalcPrice = String(value);
-  document.getElementById('priceCalcOut').textContent = priceCalcResult(priceCalcAmt, priceCalcPrice);
+    <span class="calc-amt" id="calcAmt">${r.usd}</span>`;
 }
 
 // Typing only updates the result in place - a full re-render would steal focus.
